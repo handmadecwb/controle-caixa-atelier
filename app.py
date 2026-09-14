@@ -12,7 +12,8 @@ from google.oauth2.service_account import Credentials
 SENHA_MESTRE = "Santana1989"
 
 # IMPORTANTE: Substitua o texto abaixo pelo link real da sua planilha
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/19XxuqIPAtoMn8IQw-hSsuFc7kkLCYwsKRe6FBAiFzTw/edit?usp=drivesdk"
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/19XxuqIPAtoMn8IQw-hSsuFc7kkLCYwsKRe6FBAiFZtw/edit?usp=drivesdk"
+
 
 # Configuração da página
 st.set_page_config(
