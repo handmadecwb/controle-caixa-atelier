@@ -183,15 +183,17 @@ with aba_principal:
             
         col_dtf3, col_dtf4 = st.sidebar.columns(2)
         with col_dtf3:
-            dtf_qtd = st.number_input("Quantidade de Peças (opcional)", min_value=0, value=1, step=1)
+            dtf_qtd = st.number_input("Quantidade de Peças", min_value=1, value=1, step=1)
         with col_dtf4:
             dtf_posicao = st.selectbox("Posição da Estampa", ["Frente", "Costas", "Frente e Costas", "Manga / Localizada"])
 
         dtf_prensagem = st.selectbox("Inclui Prensagem?", ["Apenas Filme (Sem Prensagem)", "Sim (Com Prensagem na Peça)"])
+        dtf_valor_unit = st.sidebar.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
         dtf_obs = st.sidebar.text_input("Observação Adicional (opcional)")
 
         if st.sidebar.button("➕ Adicionar DTF ao Pedido"):
             qtd_final = dtf_qtd if dtf_qtd > 0 else 1
+            valor_total_dtf = dtf_valor_unit * qtd_final
             obs_texto = f" - Obs: {dtf_obs}" if dtf_obs else ""
             descricao_completa = f"DTF [{dtf_largura}x{dtf_altura}cm] - Posição: {dtf_posicao} - {dtf_prensagem}{obs_texto}"
             
@@ -201,7 +203,7 @@ with aba_principal:
                 "Qtd": qtd_final,
                 "Reforma": "Não",
                 "Obs": descricao_completa,
-                "ValorTotal": 0.0
+                "ValorTotal": valor_total_dtf
             })
             st.success("Lote de DTF adicionado à lista!")
             st.rerun()
@@ -386,7 +388,6 @@ with aba_principal:
             if valor_total_pedido <= 0.0:
                 status = "Em Orçamento / Em Estudo"
             else:
-                # Corrigido: garante que se houver valor restante (> 0), o status seja "Pendente"
                 status = "Quitado" if restante <= 0.001 else "Pendente"
             
             novo_id = 1 if df.empty else int(df["ID"].max()) + 1
