@@ -3,15 +3,11 @@ import pandas as pd
 from datetime import datetime
 import os
 import base64
-import gspread
-from google.oauth2.service_account import Credentials
 
 # =========================================================================
-# CONFIGURAÇÃO DE ACESSO E GOOGLE SHEETS
+# CONFIGURAÇÃO DA SENHA DE ACESSO
 # =========================================================================
 SENHA_MESTRE = "Santana1989"
-
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/19XxuqIPAtoMn8IQw-hSsuFc7kkLCYwsKRe6FBAiFZtw/edit?usp=drivesdk"
 
 # Configuração da página
 st.set_page_config(
@@ -39,72 +35,6 @@ if not st.session_state.autenticado:
             st.error("Senha incorreta. Tente novamente.")
     
     st.stop()
-
-# =========================================================================
-# CONEXÃO COM O GOOGLE SHEETS (COM CORREÇÃO AUTOMÁTICA DE CHAVE)
-# =========================================================================
-@st.cache_resource
-def get_gsheets_client():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    
-    # Tratamento robusto para corrigir falhas de formatação na chave privada
-    if "private_key" in creds_dict:
-        pk = creds_dict["private_key"]
-        pk = pk.strip()
-        # Se a chave veio com barras invertidas literais, converte para quebras reais
-        pk = pk.replace("\\n", "\n")
-        creds_dict["private_key"] = pk
-
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(creds)
-
-def carregar_dados():
-    try:
-        if not URL_PLANILHA or "COLE_AQUI" in URL_PLANILHA:
-            st.warning("⚠️ Link da planilha não configurado corretamente.")
-            return criar_df_vazio()
-            
-        client = get_gsheets_client()
-        sheet = client.open_by_url(URL_PLANILHA).sheet1
-        dados = sheet.get_all_records()
-        
-        if dados:
-            return pd.DataFrame(dados)
-        else:
-            return criar_df_vazio()
-            
-    except Exception as e:
-        st.error(f"Erro ao conectar com o Google Sheets: {e}")
-        return criar_df_vazio()
-
-def salvar_dados(df):
-    try:
-        client = get_gsheets_client()
-        sheet = client.open_by_url(URL_PLANILHA).sheet1
-        sheet.clear()
-        
-        df_limpo = df.fillna("")
-        dados_para_salvar = [df_limpo.columns.values.tolist()] + df_limpo.values.tolist()
-        
-        try:
-            sheet.update(values=dados_para_salvar, range_name="A1")
-        except TypeError:
-            sheet.update(dados_para_salvar)
-            
-    except Exception as e:
-        st.error(f"Erro ao salvar na planilha: {e}")
-
-def criar_df_vazio():
-    return pd.DataFrame(columns=[
-        "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
-        "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
-    ])
-
-df = carregar_dados()
 
 # Função para aplicar a foto de capa como plano de fundo
 def definir_fundo(imagem_file):
@@ -136,6 +66,23 @@ def definir_fundo(imagem_file):
         )
 
 definir_fundo("fundo.png")
+
+# Arquivo de dados local
+ARQUIVO_DADOS = "dados_caixa_atelier.csv"
+
+def carregar_dados():
+    if os.path.exists(ARQUIVO_DADOS):
+        return pd.read_csv(ARQUIVO_DADOS)
+    else:
+        return pd.DataFrame(columns=[
+            "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
+            "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
+        ])
+
+def salvar_dados(df):
+    df.to_csv(ARQUIVO_DADOS, index=False)
+
+df = carregar_dados()
 
 # Inicializa as variáveis de sessão
 if "carrinho_itens" not in st.session_state:
@@ -471,7 +418,7 @@ with aba_principal:
             st.session_state.carrinho_itens = []
             st.session_state.pop("form_nome_cliente", None)
             st.session_state.pop("form_telefone_cliente", None)
-            st.success("Registro salvo com sucesso no Google Sheets!")
+            st.success("Registro salvo com sucesso no caixa!")
             st.rerun()
 
     if not df.empty:
@@ -514,13 +461,14 @@ with aba_principal:
                     if st.session_state.current_edit_id == id_alvo:
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
-                    st.success(f"Lançamento ID #{id_alvo} excluído com sucesso do Google Sheets!")
+                    st.success(f"Lançamento ID #{id_alvo} excluído com sucesso!")
                     st.rerun()
                     
         with col_exc2:
             st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
             if st.button("🗑️ Limpar Todos os Dados"):
-                salvar_dados(criar_df_vazio())
+                if os.path.exists(ARQUIVO_DADOS):
+                    os.remove(ARQUIVO_DADOS)
                 st.session_state.current_edit_id = None
                 st.session_state.edit_order_items = []
                 st.rerun()
@@ -697,7 +645,7 @@ with aba_consulta:
                         df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Detalhes"] = detalhes_finais
                         
                         salvar_dados(df)
-                        st.success("Pedido atualizado com sucesso no Google Sheets!")
+                        st.success("Pedido atualizado com sucesso!")
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
                         st.rerun()
