@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import base64
+import gspread
+from google.oauth2.service_account import Credentials
 
 # =========================================================================
 # CONFIGURAÇÃO DA SENHA DE ACESSO
@@ -67,20 +69,50 @@ def definir_fundo(imagem_file):
 
 definir_fundo("fundo.png")
 
-# Arquivo de dados local
-ARQUIVO_DADOS = "dados_caixa_atelier.csv"
+# =========================================================================
+# INTEGRAÇÃO COM GOOGLE SHEETS
+# =========================================================================
+NOME_PLANILHA = "dados_caixa_atelier"
+
+def get_google_sheet():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=scopes
+    )
+    gc = gspread.authorize(credentials)
+    sh = gc.open(NOME_PLANILHA)
+    return sh.sheet1
 
 def carregar_dados():
-    if os.path.exists(ARQUIVO_DADOS):
-        return pd.read_csv(ARQUIVO_DADOS)
-    else:
-        return pd.DataFrame(columns=[
-            "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
-            "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
-        ])
+    colunas_padrao = [
+        "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
+        "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
+    ]
+    try:
+        worksheet = get_google_sheet()
+        data = worksheet.get_all_records()
+        if data:
+            return pd.DataFrame(data)
+        else:
+            df_vazio = pd.DataFrame(columns=colunas_padrao)
+            worksheet.update(values=[colunas_padrao], range_name="A1")
+            return df_vazio
+    except Exception as e:
+        st.error(f"Erro ao conectar com a planilha: {e}")
+        return pd.DataFrame(columns=colunas_padrao)
 
 def salvar_dados(df):
-    df.to_csv(ARQUIVO_DADOS, index=False)
+    try:
+        worksheet = get_google_sheet()
+        worksheet.clear()
+        df_para_salvar = df.fillna("")
+        dados_lista = [df_para_salvar.columns.values.tolist()] + df_para_salvar.values.tolist()
+        worksheet.update(values=dados_lista, range_name="A1")
+    except Exception as e:
+        st.error(f"Erro ao salvar na planilha: {e}")
 
 df = carregar_dados()
 
@@ -467,10 +499,14 @@ with aba_principal:
         with col_exc2:
             st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
             if st.button("🗑️ Limpar Todos os Dados"):
-                if os.path.exists(ARQUIVO_DADOS):
-                    os.remove(ARQUIVO_DADOS)
+                df_limpo = pd.DataFrame(columns=[
+                    "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
+                    "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
+                ])
+                salvar_dados(df_limpo)
                 st.session_state.current_edit_id = None
                 st.session_state.edit_order_items = []
+                st.success("Todos os dados foram limpos e sincronizados com a nuvem!")
                 st.rerun()
     else:
         st.info("Nenhum lançamento cadastrado ainda.")
@@ -648,51 +684,4 @@ with aba_consulta:
                         st.success("Pedido atualizado com sucesso!")
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
-                        st.rerun()
-
-            st.markdown("---")
-            st.markdown("#### ➕ Acrescentar Novo Item a Este Pedido")
-            with st.form(f"form_acrescentar_item_{id_escolhido}", clear_on_submit=True):
-                col_ax1, col_ax2, col_ax3 = st.columns([2, 1, 1])
-                with col_ax1:
-                    extra_desc = st.text_input("Descrição do Novo Item", placeholder="Ex: Camiseta extra, bordado...")
-                with col_ax2:
-                    extra_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1)
-                with col_ax3:
-                    extra_val_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
-
-                btn_incluir_extra = st.form_submit_button("➕ Salvar e Acrescentar Novo Item")
-                
-                if btn_incluir_extra:
-                    if extra_desc.strip():
-                        st.session_state.edit_order_items.append({
-                            "desc": extra_desc.strip(),
-                            "qtd": int(extra_qtd),
-                            "valor_unit": float(extra_val_unit)
-                        })
-                        
-                        val_tot_calculado = sum(i["qtd"] * i["valor_unit"] for i in st.session_state.edit_order_items)
-                        val_pago_atual = float(row_atual["Valor Pago"])
-                        novo_restante = val_tot_calculado - val_pago_atual
-                        
-                        if val_tot_calculado <= 0.0:
-                            novo_status = "Em Orçamento / Em Estudo"
-                        elif novo_restante > 0.001:
-                            novo_status = "Pendente"
-                        else:
-                            novo_status = "Quitado"
-                        
-                        partes_novas = []
-                        for i in st.session_state.edit_order_items:
-                            sub = i["qtd"] * i["valor_unit"]
-                            partes_novas.append(f"{i['qtd']}x {i['desc']} [R$ {sub:.2f}]")
-                        detalhes_finais = " ;; ".join(partes_novas)
-                        
-                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Valor Total"] = val_tot_calculado
-                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Restante"] = novo_restante
-                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Status"] = novo_status
-                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Detalhes"] = detalhes_finais
-                        
-                        salvar_dados(df)
-                        st.success("Novo item acrescentado com sucesso!")
                         st.rerun()
