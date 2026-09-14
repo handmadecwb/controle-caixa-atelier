@@ -10,23 +10,47 @@ st.set_page_config(
 )
 
 
+# Função para verificar a senha (ajuste a senha conforme desejar)
+def verificar_senha():
+  if "senha_correta" not in st.session_state:
+    st.session_state["senha_correta"] = False
+
+  if not st.session_state["senha_correta"]:
+    st.sidebar.title("🔒 Acesso Restrito")
+    senha_digitada = st.sidebar.text_input("Digite a senha:", type="password")
+    if st.sidebar.button("Entrar"):
+      # Defina aqui a senha de acesso do seu atelier
+      if senha_digitada == "1234":
+        st.session_state["senha_correta"] = True
+        st.rerun()
+      else:
+        st.sidebar.error("Senha incorreta!")
+    return False
+  return True
+
+
+# Bloqueia a execução se não estiver logado
+if not verificar_senha():
+  st.stop()
+
+
 # Função para conectar ao Google Sheets usando as credenciais do Secrets
 @st.cache_resource
-init_connection = lambda: gspread.authorize(
-    Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ],
-    )
-)
+def init_connection():
+  return gspread.authorize(
+      Credentials.from_service_account_info(
+          st.secrets["gcp_service_account"],
+          scopes=[
+              "https://www.googleapis.com/auth/spreadsheets",
+              "https://www.googleapis.com/auth/drive",
+          ],
+      )
+  )
 
 
 def carregar_dados():
   try:
     client = init_connection()
-    # Abre a planilha pelo nome exato no Google Drive
     sheet = client.open("dados_caixa_atelier").worksheet("Página1")
     dados = sheet.get_all_records()
     if not dados:
@@ -55,7 +79,6 @@ def salvar_dados(novo_registro):
   try:
     client = init_connection()
     sheet = client.open("dados_caixa_atelier").worksheet("Página1")
-    # Adiciona a nova linha no final da planilha
     sheet.append_row(list(novo_registro.values()))
     return True
   except Exception as e:
@@ -91,9 +114,9 @@ with st.form("form_lancamento", clear_on_submit=True):
     telefone = st.text_input("Telefone / WhatsApp")
 
   with col2:
-    largura = st.number_input("Largura (cm)", min_format="%.1f", value=0.0)
+    largura = st.number_input("Largura (cm)", format="%.1f", value=0.0)
     altura = st.number_input(
-        "Altura / Comprimento (cm)", min_format="%.1f", value=0.0
+        "Altura / Comprimento (cm)", format="%.1f", value=0.0
     )
     qtd_pecas = st.number_input(
         "Quantidade de Peças", min_value=1, value=1, step=1
