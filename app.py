@@ -7,8 +7,7 @@ import base64
 # =========================================================================
 # CONFIGURAÇÃO DA SENHA DE ACESSO
 # =========================================================================
-# Defina aqui a senha de acesso ao seu painel
-SENHA_MESTRE = "Santana1989"  # Altere para a senha desejada
+SENHA_MESTRE = "Santana1989"
 
 # Configuração da página
 st.set_page_config(
@@ -35,7 +34,6 @@ if not st.session_state.autenticado:
         else:
             st.error("Senha incorreta. Tente novamente.")
     
-    # Interrompe a execução do restante do app até que o usuário faça login
     st.stop()
 
 # Função para aplicar a foto de capa como plano de fundo
@@ -96,7 +94,7 @@ if "edit_order_items" not in st.session_state:
 if "current_edit_id" not in st.session_state:
     st.session_state.current_edit_id = None
 
-# Botão de Logout na barra lateral para trancar o app novamente se necessário
+# Botão de Logout na barra lateral
 st.sidebar.markdown("### 🔒 Sessão")
 if st.sidebar.button("Bloquear / Sair"):
     st.session_state.autenticado = False
@@ -388,7 +386,8 @@ with aba_principal:
             if valor_total_pedido <= 0.0:
                 status = "Em Orçamento / Em Estudo"
             else:
-                status = "Quitado" if restante <= 0 else "Pendente"
+                # Corrigido: garante que se houver valor restante (> 0), o status seja "Pendente"
+                status = "Quitado" if restante <= 0.001 else "Pendente"
             
             novo_id = 1 if df.empty else int(df["ID"].max()) + 1
             
@@ -561,7 +560,7 @@ with aba_consulta:
                             if val_tot_calculado <= 0.0:
                                 novo_status = "Em Orçamento / Em Estudo"
                             else:
-                                novo_status = "Quitado" if novo_restante <= 0 else "Pendente"
+                                novo_status = "Quitado" if novo_restante <= 0.001 else "Pendente"
                             
                             partes_novas = []
                             for i in itens_atuais:
@@ -614,13 +613,12 @@ with aba_consulta:
                         if val_tot_calculado <= 0.0:
                             novo_status = "Em Orçamento / Em Estudo"
                         else:
-                            novo_status = "Quitado" if novo_restante <= 0 else "Pendente"
+                            novo_status = "Quitado" if novo_restante <= 0.001 else "Pendente"
                         
                         partes_novas = []
                         for i in st.session_state.edit_order_items:
                             sub = i["qtd"] * i["valor_unit"]
                             partes_novas.append(f"{i['qtd']}x {i['desc']} [R$ {sub:.2f}]")
-                            
                         detalhes_finais = " ;; ".join(partes_novas)
                         
                         df.loc[df["ID"] == id_escolhido, "Cliente"] = edit_cli
@@ -633,8 +631,52 @@ with aba_consulta:
                         df.loc[df["ID"] == id_escolhido, "Detalhes"] = detalhes_finais
                         
                         salvar_dados(df)
-                        
                         st.success("Pedido atualizado com sucesso!")
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
+                        st.rerun()
+
+            st.markdown("---")
+            st.markdown("#### ➕ Acrescentar Novo Item a Este Pedido")
+            with st.form(f"form_acrescentar_item_{id_escolhido}", clear_on_submit=True):
+                col_ax1, col_ax2, col_ax3 = st.columns([2, 1, 1])
+                with col_ax1:
+                    extra_desc = st.text_input("Descrição do Novo Item", placeholder="Ex: Camiseta extra, bordado...")
+                with col_ax2:
+                    extra_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1)
+                with col_ax3:
+                    extra_val_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
+
+                btn_incluir_extra = st.form_submit_button("➕ Salvar e Acrescentar Novo Item")
+                
+                if btn_incluir_extra:
+                    if extra_desc.strip():
+                        st.session_state.edit_order_items.append({
+                            "desc": extra_desc.strip(),
+                            "qtd": int(extra_qtd),
+                            "valor_unit": float(extra_val_unit)
+                        })
+                        
+                        val_tot_calculado = sum(i["qtd"] * i["valor_unit"] for i in st.session_state.edit_order_items)
+                        val_pago_atual = float(row_atual["Valor Pago"])
+                        novo_restante = val_tot_calculado - val_pago_atual
+                        
+                        if val_tot_calculado <= 0.0:
+                            novo_status = "Em Orçamento / Em Estudo"
+                        else:
+                            novo_status = "Quitado" if novo_restante <= 0.001 else "Pendente"
+                        
+                        partes_novas = []
+                        for i in st.session_state.edit_order_items:
+                            sub = i["qtd"] * i["valor_unit"]
+                            partes_novas.append(f"{i['qtd']}x {i['desc']} [R$ {sub:.2f}]")
+                        detalhes_finais = " ;; ".join(partes_novas)
+                        
+                        df.loc[df["ID"] == id_escolhido, "Valor Total"] = val_tot_calculado
+                        df.loc[df["ID"] == id_escolhido, "Restante"] = novo_restante
+                        df.loc[df["ID"] == id_escolhido, "Status"] = novo_status
+                        df.loc[df["ID"] == id_escolhido, "Detalhes"] = detalhes_finais
+                        
+                        salvar_dados(df)
+                        st.success("Novo item acrescentado com sucesso!")
                         st.rerun()
