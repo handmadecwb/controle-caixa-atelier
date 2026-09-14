@@ -11,9 +11,7 @@ from google.oauth2.service_account import Credentials
 # =========================================================================
 SENHA_MESTRE = "Santana1989"
 
-# IMPORTANTE: Substitua o texto abaixo pelo link real da sua planilha
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/19XxuqIPAtoMn8IQw-hSsuFc7kkLCYwsKRe6FBAiFZtw/edit?usp=drivesdk"
-
 
 # Configuração da página
 st.set_page_config(
@@ -43,7 +41,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # =========================================================================
-# CONEXÃO COM O GOOGLE SHEETS
+# CONEXÃO COM O GOOGLE SHEETS (COM CORREÇÃO AUTOMÁTICA DE CHAVE)
 # =========================================================================
 @st.cache_resource
 def get_gsheets_client():
@@ -51,15 +49,23 @@ def get_gsheets_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    # Puxa as credenciais que você cadastrou no secrets do Streamlit
     creds_dict = dict(st.secrets["gcp_service_account"])
+    
+    # Tratamento robusto para corrigir falhas de formatação na chave privada
+    if "private_key" in creds_dict:
+        pk = creds_dict["private_key"]
+        pk = pk.strip()
+        # Se a chave veio com barras invertidas literais, converte para quebras reais
+        pk = pk.replace("\\n", "\n")
+        creds_dict["private_key"] = pk
+
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(creds)
 
 def carregar_dados():
     try:
-        if URL_PLANILHA == "COLE_AQUI_O_LINK_DA_SUA_PLANILHA":
-            st.warning("⚠️ Você esqueceu de colocar o link da planilha no código fonte!")
+        if not URL_PLANILHA or "COLE_AQUI" in URL_PLANILHA:
+            st.warning("⚠️ Link da planilha não configurado corretamente.")
             return criar_df_vazio()
             
         client = get_gsheets_client()
@@ -81,11 +87,9 @@ def salvar_dados(df):
         sheet = client.open_by_url(URL_PLANILHA).sheet1
         sheet.clear()
         
-        # Converte o DataFrame para formato aceito pelo GSheets (substitui NaN por vazio)
         df_limpo = df.fillna("")
         dados_para_salvar = [df_limpo.columns.values.tolist()] + df_limpo.values.tolist()
         
-        # Tenta a sintaxe mais nova do gspread, se falhar, usa a antiga
         try:
             sheet.update(values=dados_para_salvar, range_name="A1")
         except TypeError:
@@ -441,7 +445,6 @@ with aba_principal:
             else:
                 status = "Quitado"
             
-            # Garante que o df não está vazio e converte a coluna ID para numérico antes de pegar o máximo
             if df.empty:
                 novo_id = 1
             else:
@@ -472,7 +475,6 @@ with aba_principal:
             st.rerun()
 
     if not df.empty:
-        # Conversão de tipos de dados numéricos vindos do Sheets para garantir que os cálculos funcionem
         df["Valor Pago"] = pd.to_numeric(df["Valor Pago"], errors="coerce").fillna(0)
         df["Restante"] = pd.to_numeric(df["Restante"], errors="coerce").fillna(0)
         df["Valor Total"] = pd.to_numeric(df["Valor Total"], errors="coerce").fillna(0)
