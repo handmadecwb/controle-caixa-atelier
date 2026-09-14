@@ -3,11 +3,16 @@ import pandas as pd
 from datetime import datetime
 import os
 import base64
+import gspread
+from google.oauth2.service_account import Credentials
 
 # =========================================================================
-# CONFIGURAÇÃO DA SENHA DE ACESSO
+# CONFIGURAÇÃO DE ACESSO E GOOGLE SHEETS
 # =========================================================================
 SENHA_MESTRE = "Santana1989"
+
+# IMPORTANTE: Substitua o texto abaixo pelo link real da sua planilha
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/19XxuqIPAtoMn8IQw-hSsuFc7kkLCYwsKRe6FBAiFzTw/edit?usp=drivesdk"
 
 # Configuração da página
 st.set_page_config(
@@ -35,6 +40,66 @@ if not st.session_state.autenticado:
             st.error("Senha incorreta. Tente novamente.")
     
     st.stop()
+
+# =========================================================================
+# CONEXÃO COM O GOOGLE SHEETS
+# =========================================================================
+@st.cache_resource
+def get_gsheets_client():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    # Puxa as credenciais que você cadastrou no secrets do Streamlit
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return gspread.authorize(creds)
+
+def carregar_dados():
+    try:
+        if URL_PLANILHA == "COLE_AQUI_O_LINK_DA_SUA_PLANILHA":
+            st.warning("⚠️ Você esqueceu de colocar o link da planilha no código fonte!")
+            return criar_df_vazio()
+            
+        client = get_gsheets_client()
+        sheet = client.open_by_url(URL_PLANILHA).sheet1
+        dados = sheet.get_all_records()
+        
+        if dados:
+            return pd.DataFrame(dados)
+        else:
+            return criar_df_vazio()
+            
+    except Exception as e:
+        st.error(f"Erro ao conectar com o Google Sheets: {e}")
+        return criar_df_vazio()
+
+def salvar_dados(df):
+    try:
+        client = get_gsheets_client()
+        sheet = client.open_by_url(URL_PLANILHA).sheet1
+        sheet.clear()
+        
+        # Converte o DataFrame para formato aceito pelo GSheets (substitui NaN por vazio)
+        df_limpo = df.fillna("")
+        dados_para_salvar = [df_limpo.columns.values.tolist()] + df_limpo.values.tolist()
+        
+        # Tenta a sintaxe mais nova do gspread, se falhar, usa a antiga
+        try:
+            sheet.update(values=dados_para_salvar, range_name="A1")
+        except TypeError:
+            sheet.update(dados_para_salvar)
+            
+    except Exception as e:
+        st.error(f"Erro ao salvar na planilha: {e}")
+
+def criar_df_vazio():
+    return pd.DataFrame(columns=[
+        "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
+        "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
+    ])
+
+df = carregar_dados()
 
 # Função para aplicar a foto de capa como plano de fundo
 def definir_fundo(imagem_file):
@@ -66,23 +131,6 @@ def definir_fundo(imagem_file):
         )
 
 definir_fundo("fundo.png")
-
-# Arquivo de dados local
-ARQUIVO_DADOS = "dados_caixa_atelier.csv"
-
-def carregar_dados():
-    if os.path.exists(ARQUIVO_DADOS):
-        return pd.read_csv(ARQUIVO_DADOS)
-    else:
-        return pd.DataFrame(columns=[
-            "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
-            "Valor Total", "Valor Pago", "Restante", "Forma de Pagamento", "Status"
-        ])
-
-def salvar_dados(df):
-    df.to_csv(ARQUIVO_DADOS, index=False)
-
-df = carregar_dados()
 
 # Inicializa as variáveis de sessão
 if "carrinho_itens" not in st.session_state:
@@ -366,12 +414,8 @@ with aba_principal:
     with st.sidebar.form("form_finalizacao"):
         st.markdown("**Fechamento do Pagamento:**")
         
-        # Total puxa a soma do carrinho automaticamente
         valor_total_pedido = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(soma_calculada_itens))
-        
-        # Valor Pago começa zerado, forçando o usuário a preencher manualmente
         valor_pago = st.number_input("Valor Pago / Desembolsado (R$)", min_value=0.0, format="%.2f", value=0.0)
-        
         forma_pgto = st.selectbox("Forma de Pagamento", ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "Fiado / Pendente"])
         
         submit_pedido = st.form_submit_button("💾 Salvar Registro no Caixa")
@@ -387,10 +431,8 @@ with aba_principal:
             else:
                 detalhes_final = "Lançamento direto sem itens especificados"
 
-            # Calcula o Saldo Devedor
             restante = valor_total_pedido - valor_pago
             
-            # Lógica automática do Status baseada na matemática
             if valor_total_pedido <= 0.0:
                 status = "Em Orçamento / Em Estudo"
             elif restante > 0.001:
@@ -398,7 +440,11 @@ with aba_principal:
             else:
                 status = "Quitado"
             
-            novo_id = 1 if df.empty else int(df["ID"].max()) + 1
+            # Garante que o df não está vazio e converte a coluna ID para numérico antes de pegar o máximo
+            if df.empty:
+                novo_id = 1
+            else:
+                novo_id = int(pd.to_numeric(df["ID"]).max()) + 1
             
             novo_registro = pd.DataFrame([{
                 "ID": novo_id,
@@ -410,7 +456,7 @@ with aba_principal:
                 "Detalhes": detalhes_final,
                 "Valor Total": valor_total_pedido,
                 "Valor Pago": valor_pago,
-                "Restante": restante, # Saldo devedor
+                "Restante": restante,
                 "Forma de Pagamento": forma_pgto,
                 "Status": status
             }])
@@ -421,12 +467,17 @@ with aba_principal:
             st.session_state.carrinho_itens = []
             st.session_state.pop("form_nome_cliente", None)
             st.session_state.pop("form_telefone_cliente", None)
-            st.success("Registro salvo com sucesso no caixa!")
+            st.success("Registro salvo com sucesso no Google Sheets!")
             st.rerun()
 
     if not df.empty:
-        entradas = df[df["Tipo"].str.contains("Entrada")]
-        saidas = df[df["Tipo"].str.contains("Saída")]
+        # Conversão de tipos de dados numéricos vindos do Sheets para garantir que os cálculos funcionem
+        df["Valor Pago"] = pd.to_numeric(df["Valor Pago"], errors="coerce").fillna(0)
+        df["Restante"] = pd.to_numeric(df["Restante"], errors="coerce").fillna(0)
+        df["Valor Total"] = pd.to_numeric(df["Valor Total"], errors="coerce").fillna(0)
+
+        entradas = df[df["Tipo"].astype(str).str.contains("Entrada")]
+        saidas = df[df["Tipo"].astype(str).str.contains("Saída")]
         
         total_recebido = entradas["Valor Pago"].sum()
         total_a_receber = entradas["Restante"].sum()
@@ -455,19 +506,18 @@ with aba_principal:
             if id_para_excluir_str != "Selecione...":
                 if st.button("🗑️ Excluir Lançamento Selecionado"):
                     id_alvo = int(id_para_excluir_str.split(" - ")[0].replace("ID #", ""))
-                    df = df[df["ID"] != id_alvo]
+                    df = df[pd.to_numeric(df["ID"]) != id_alvo]
                     salvar_dados(df)
                     if st.session_state.current_edit_id == id_alvo:
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
-                    st.success(f"Lançamento ID #{id_alvo} excluído com sucesso!")
+                    st.success(f"Lançamento ID #{id_alvo} excluído com sucesso do Google Sheets!")
                     st.rerun()
                     
         with col_exc2:
             st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
             if st.button("🗑️ Limpar Todos os Dados"):
-                if os.path.exists(ARQUIVO_DADOS):
-                    os.remove(ARQUIVO_DADOS)
+                salvar_dados(criar_df_vazio())
                 st.session_state.current_edit_id = None
                 st.session_state.edit_order_items = []
                 st.rerun()
@@ -493,7 +543,7 @@ with aba_consulta:
             
             if st.session_state.current_edit_id != id_escolhido:
                 st.session_state.current_edit_id = id_escolhido
-                row_atual = df[df["ID"] == id_escolhido].iloc[0]
+                row_atual = df[pd.to_numeric(df["ID"]) == id_escolhido].iloc[0]
                 
                 detalhes_str = str(row_atual["Detalhes"])
                 items_parsed = []
@@ -534,7 +584,7 @@ with aba_consulta:
                 
                 st.session_state.edit_order_items = items_parsed
 
-            row_atual = df[df["ID"] == id_escolhido].iloc[0]
+            row_atual = df[pd.to_numeric(df["ID"]) == id_escolhido].iloc[0]
             
             st.markdown("**📋 Itens Individuais do Pedido (Edição & Exclusão):**")
             
@@ -556,7 +606,7 @@ with aba_consulta:
                         st.session_state.edit_order_items = itens_atuais
                         
                         if len(itens_atuais) == 0:
-                            df = df[df["ID"] != id_escolhido]
+                            df = df[pd.to_numeric(df["ID"]) != id_escolhido]
                             salvar_dados(df)
                             st.session_state.current_edit_id = None
                             st.session_state.edit_order_items = []
@@ -579,10 +629,10 @@ with aba_consulta:
                                 partes_novas.append(f"{i['qtd']}x {i['desc']} [R$ {sub:.2f}]")
                             detalhes_finais = " ;; ".join(partes_novas)
                             
-                            df.loc[df["ID"] == id_escolhido, "Valor Total"] = val_tot_calculado
-                            df.loc[df["ID"] == id_escolhido, "Restante"] = novo_restante
-                            df.loc[df["ID"] == id_escolhido, "Status"] = novo_status
-                            df.loc[df["ID"] == id_escolhido, "Detalhes"] = detalhes_finais
+                            df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Valor Total"] = val_tot_calculado
+                            df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Restante"] = novo_restante
+                            df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Status"] = novo_status
+                            df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Detalhes"] = detalhes_finais
                             salvar_dados(df)
                             
                             st.success("Item removido com sucesso!")
@@ -611,7 +661,7 @@ with aba_consulta:
                 
                 if btn_salvar_edicao:
                     if len(st.session_state.edit_order_items) == 0:
-                        df = df[df["ID"] != id_escolhido]
+                        df = df[pd.to_numeric(df["ID"]) != id_escolhido]
                         salvar_dados(df)
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
@@ -634,17 +684,17 @@ with aba_consulta:
                             partes_novas.append(f"{i['qtd']}x {i['desc']} [R$ {sub:.2f}]")
                         detalhes_finais = " ;; ".join(partes_novas)
                         
-                        df.loc[df["ID"] == id_escolhido, "Cliente"] = edit_cli
-                        df.loc[df["ID"] == id_escolhido, "Telefone"] = edit_tel
-                        df.loc[df["ID"] == id_escolhido, "Valor Pago"] = edit_val_pago
-                        df.loc[df["ID"] == id_escolhido, "Forma de Pagamento"] = edit_forma
-                        df.loc[df["ID"] == id_escolhido, "Valor Total"] = val_tot_calculado
-                        df.loc[df["ID"] == id_escolhido, "Restante"] = novo_restante
-                        df.loc[df["ID"] == id_escolhido, "Status"] = novo_status
-                        df.loc[df["ID"] == id_escolhido, "Detalhes"] = detalhes_finais
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Cliente"] = edit_cli
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Telefone"] = edit_tel
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Valor Pago"] = edit_val_pago
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Forma de Pagamento"] = edit_forma
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Valor Total"] = val_tot_calculado
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Restante"] = novo_restante
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Status"] = novo_status
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Detalhes"] = detalhes_finais
                         
                         salvar_dados(df)
-                        st.success("Pedido atualizado com sucesso!")
+                        st.success("Pedido atualizado com sucesso no Google Sheets!")
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
                         st.rerun()
@@ -687,10 +737,10 @@ with aba_consulta:
                             partes_novas.append(f"{i['qtd']}x {i['desc']} [R$ {sub:.2f}]")
                         detalhes_finais = " ;; ".join(partes_novas)
                         
-                        df.loc[df["ID"] == id_escolhido, "Valor Total"] = val_tot_calculado
-                        df.loc[df["ID"] == id_escolhido, "Restante"] = novo_restante
-                        df.loc[df["ID"] == id_escolhido, "Status"] = novo_status
-                        df.loc[df["ID"] == id_escolhido, "Detalhes"] = detalhes_finais
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Valor Total"] = val_tot_calculado
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Restante"] = novo_restante
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Status"] = novo_status
+                        df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Detalhes"] = detalhes_finais
                         
                         salvar_dados(df)
                         st.success("Novo item acrescentado com sucesso!")
