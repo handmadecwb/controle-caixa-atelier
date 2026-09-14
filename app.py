@@ -4,12 +4,39 @@ from datetime import datetime
 import os
 import base64
 
+# =========================================================================
+# CONFIGURAÇÃO DA SENHA DE ACESSO
+# =========================================================================
+# Defina aqui a senha de acesso ao seu painel
+SENHA_MESTRE = "Santana1989"  # Altere para a senha desejada
+
 # Configuração da página
 st.set_page_config(
     page_title="Controle de Caixa - handmadecwb",
     page_icon="🧵",
     layout="wide"
 )
+
+# Tela de Login / Verificação de Senha
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+
+if not st.session_state.autenticado:
+    st.markdown("## 🧵 handmadecwb: Acesso Restrito")
+    st.markdown("Por favor, digite a senha para acessar o sistema de gestão.")
+    
+    senha_digitada = st.text_input("Senha de Acesso", type="password")
+    
+    if st.button("Entrar"):
+        if senha_digitada == SENHA_MESTRE:
+            st.session_state.autenticado = True
+            st.success("Acesso autorizado!")
+            st.rerun()
+        else:
+            st.error("Senha incorreta. Tente novamente.")
+    
+    # Interrompe a execução do restante do app até que o usuário faça login
+    st.stop()
 
 # Função para aplicar a foto de capa como plano de fundo
 def definir_fundo(imagem_file):
@@ -68,6 +95,13 @@ if "edit_order_items" not in st.session_state:
 
 if "current_edit_id" not in st.session_state:
     st.session_state.current_edit_id = None
+
+# Botão de Logout na barra lateral para trancar o app novamente se necessário
+st.sidebar.markdown("### 🔒 Sessão")
+if st.sidebar.button("Bloquear / Sair"):
+    st.session_state.autenticado = False
+    st.rerun()
+st.sidebar.markdown("---")
 
 # Cabeçalho Principal
 st.markdown("## 🧵 handmadecwb: Gestão Integrada de Caixa & Pedidos")
