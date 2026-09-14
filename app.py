@@ -366,8 +366,12 @@ with aba_principal:
     with st.sidebar.form("form_finalizacao"):
         st.markdown("**Fechamento do Pagamento:**")
         
+        # Total puxa a soma do carrinho automaticamente
         valor_total_pedido = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(soma_calculada_itens))
-        valor_pago = st.number_input("Valor Pago / Desembolsado (R$)", min_value=0.0, format="%.2f", value=float(soma_calculada_itens))
+        
+        # Valor Pago começa zerado, forçando o usuário a preencher manualmente
+        valor_pago = st.number_input("Valor Pago / Desembolsado (R$)", min_value=0.0, format="%.2f", value=0.0)
+        
         forma_pgto = st.selectbox("Forma de Pagamento", ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "Fiado / Pendente"])
         
         submit_pedido = st.form_submit_button("💾 Salvar Registro no Caixa")
@@ -383,8 +387,10 @@ with aba_principal:
             else:
                 detalhes_final = "Lançamento direto sem itens especificados"
 
+            # Calcula o Saldo Devedor
             restante = valor_total_pedido - valor_pago
             
+            # Lógica automática do Status baseada na matemática
             if valor_total_pedido <= 0.0:
                 status = "Em Orçamento / Em Estudo"
             elif restante > 0.001:
@@ -404,7 +410,7 @@ with aba_principal:
                 "Detalhes": detalhes_final,
                 "Valor Total": valor_total_pedido,
                 "Valor Pago": valor_pago,
-                "Restante": restante,
+                "Restante": restante, # Saldo devedor
                 "Forma de Pagamento": forma_pgto,
                 "Status": status
             }])
