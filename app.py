@@ -79,8 +79,19 @@ def get_google_sheet():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
+    
+    # Pega os segredos do Streamlit
+    secrets_dict = dict(st.secrets["gcp_service_account"])
+    
+    # Limpa automaticamente qualquer espaço ou quebra de linha errada na chave privada
+    if "private_key" in secrets_dict:
+        pk = secrets_dict["private_key"].strip()
+        # Garante que as marcas de início e fim estejam limpas
+        pk = pk.replace("\\n", "\n")
+        secrets_dict["private_key"] = pk
+
     credentials = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"], scopes=scopes
+        secrets_dict, scopes=scopes
     )
     gc = gspread.authorize(credentials)
     sh = gc.open(NOME_PLANILHA)
