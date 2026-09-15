@@ -80,7 +80,7 @@ def get_google_sheet():
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # Pega os segredos do Streamlit
+    # Pega os segredos do Streamlit (com conversão para dicionário padrão)
     secrets_dict = dict(st.secrets["gcp_service_account"])
     
     # Limpa automaticamente qualquer espaço ou quebra de linha errada na chave privada
@@ -675,7 +675,7 @@ with aba_consulta:
                             novo_status = "Pendente"
                         else:
                             novo_status = "Quitado"
-                        
+                            
                         partes_novas = []
                         for i in st.session_state.edit_order_items:
                             sub = i["qtd"] * i["valor_unit"]
@@ -692,7 +692,7 @@ with aba_consulta:
                         df.loc[pd.to_numeric(df["ID"]) == id_escolhido, "Detalhes"] = detalhes_finais
                         
                         salvar_dados(df)
-                        st.success("Pedido atualizado com sucesso!")
+                        st.success("Alterações salvas com sucesso!")
                         st.session_state.current_edit_id = None
                         st.session_state.edit_order_items = []
                         st.rerun()
