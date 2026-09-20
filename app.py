@@ -80,10 +80,8 @@ def get_google_sheet():
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # Pega os segredos do Streamlit (com conversão para dicionário padrão)
     secrets_dict = dict(st.secrets["gcp_service_account"])
     
-    # Limpa automaticamente qualquer espaço ou quebra de linha errada na chave privada
     if "private_key" in secrets_dict:
         pk = secrets_dict["private_key"].strip()
         pk = pk.replace("\\n", "\n")
@@ -106,7 +104,6 @@ def carregar_dados():
         data = worksheet.get_all_records()
         if data:
             df_temp = pd.DataFrame(data)
-            # TRAVA DE SEGURANÇA: Transforma ID em número e remove linhas vazias/com erro
             df_temp["ID"] = pd.to_numeric(df_temp["ID"], errors="coerce")
             df_temp = df_temp.dropna(subset=["ID"])
             df_temp["ID"] = df_temp["ID"].astype(int)
@@ -131,7 +128,6 @@ def salvar_dados(df):
 
 df = carregar_dados()
 
-# Inicializa as variáveis de sessão
 if "carrinho_itens" not in st.session_state:
     st.session_state.carrinho_itens = []
 
@@ -141,19 +137,16 @@ if "edit_order_items" not in st.session_state:
 if "current_edit_id" not in st.session_state:
     st.session_state.current_edit_id = None
 
-# Botão de Logout na barra lateral
 st.sidebar.markdown("### 🔒 Sessão")
 if st.sidebar.button("Bloquear / Sair"):
     st.session_state.autenticado = False
     st.rerun()
 st.sidebar.markdown("---")
 
-# Cabeçalho Principal
 st.markdown("## 🧵 handmadecwb: Gestão Integrada de Caixa & Pedidos")
 st.markdown("Controle de fluxo de caixa, bordados, costura, impressões DTF e histórico de fornecedores/clientes.")
 st.markdown("---")
 
-# Abas de Navegação Principal (Adicionadas Clientes e Fornecedores)
 aba_principal, aba_consulta, aba_clientes, aba_fornecedores = st.tabs([
     "📊 Caixa & Lançamentos", 
     "🔍 Consulta & Edição", 
@@ -191,10 +184,8 @@ with aba_principal:
 
     st.sidebar.markdown("---")
 
-    # 1. SEÇÃO: MATRIZ DE BORDADO
     if categoria == "Matriz de Bordado":
         st.sidebar.markdown("**📐 Parâmetros da Matriz de Bordado:**")
-        
         col_mb1, col_mb2 = st.sidebar.columns(2)
         with col_mb1:
             mb_largura = st.number_input("Largura (cm)", min_value=0.0, format="%.1f", value=10.0)
@@ -230,10 +221,8 @@ with aba_principal:
             st.success("Matriz adicionada à lista!")
             st.rerun()
 
-    # 2. SEÇÃO: IMPRESSÃO DTF
     elif categoria == "Impressão DTF":
         st.sidebar.markdown("**🖨️ Parâmetros da Impressão DTF:**")
-        
         col_dtf1, col_dtf2 = st.sidebar.columns(2)
         with col_dtf1:
             dtf_largura = st.number_input("Largura (cm)", min_value=0.0, format="%.1f", value=20.0)
@@ -267,16 +256,13 @@ with aba_principal:
             st.success("Lote de DTF adicionado à lista!")
             st.rerun()
 
-    # 3. SEÇÃO: INSUMOS / MATERIAIS
     elif categoria == "Insumos / Materiais":
         st.sidebar.markdown("**🛠️ Cadastro de Insumo / Material / Peça:**")
-        
         tipo_insumo = st.sidebar.selectbox("Tipo de Insumo", [
             "Tecido", "Linha / Insumo de Costura", "Agulha", "Peça p/ Máquina Reta", 
             "Peça p/ Máquina Overlock", "Peça p/ Bordadeira", "Insumo p/ Prensa / DTF", 
             "Ferramenta / Acessório Geral", "Outro"
         ])
-        
         nome_item_insumo = st.sidebar.text_input("Descrição do Item")
         
         col_ins1, col_ins2 = st.sidebar.columns(2)
@@ -303,19 +289,15 @@ with aba_principal:
             st.success("Insumo adicionado à lista!")
             st.rerun()
 
-    # 4. SEÇÃO PADRÃO (Peça Costurada / Outros)
     else:
         st.sidebar.markdown("**Adicionar Itens ao Pedido:**")
-        
         with st.sidebar.form("form_adicionar_item", clear_on_submit=True):
             col_t1, col_t2 = st.columns(2)
             with col_t1:
                 item_tam = st.selectbox("Tamanho", [
-                    "Único", 
-                    "RN", "P (Bebê)", "M (Bebê)", "G (Bebê)", 
+                    "Único", "RN", "P (Bebê)", "M (Bebê)", "G (Bebê)", 
                     "Tam 1", "Tam 2", "Tam 4", "Tam 6", "Tam 8", "Tam 10", "Tam 12", "Tam 14", "Tam 16", 
-                    "PP", "P", "M", "G", "GG", "XG", 
-                    "G1", "G2", "G3", "G4"
+                    "PP", "P", "M", "G", "GG", "XG", "G1", "G2", "G3", "G4"
                 ])
             with col_t2:
                 item_cor_sel = st.selectbox("Cor", [
@@ -324,8 +306,7 @@ with aba_principal:
                     "Vermelho", "Bordô", "Vinho", "Rosa", "Rosa Chá", "Pink", "Magenta", "Lilás", "Roxo", "Lavanda",
                     "Verde", "Verde Militar", "Verde Musgo", "Verde Água", "Verde Lima", "Mint",
                     "Amarelo", "Mostarda", "Laranja", "Salmão", "Coral", "Terracota",
-                    "Marrom", "Bege", "Nude", "Cáqui", "Dourado", "Prata", "Bronze",
-                    "Outra"
+                    "Marrom", "Bege", "Nude", "Cáqui", "Dourado", "Prata", "Bronze", "Outra"
                 ])
 
             item_cor_custom = st.text_input("Qual a cor? (Se 'Outra' acima)")
@@ -354,7 +335,6 @@ with aba_principal:
                 })
                 st.rerun()
 
-    # Exibição e Edição do Carrinho
     if st.session_state.carrinho_itens:
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### 🛒 Carrinho ({len(st.session_state.carrinho_itens)} itens)")
@@ -479,7 +459,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO DE LEITURA INDIVIDUAL)
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -500,6 +480,7 @@ with aba_consulta:
         
         detalhes_brutos = str(row_pedido["Detalhes"])
         
+        # Garante o recarregamento correto e isolado ao trocar de pedido
         if st.session_state.current_edit_id != pedido_id:
             st.session_state.current_edit_id = pedido_id
             
@@ -508,11 +489,13 @@ with aba_consulta:
                 itens_split = detalhes_brutos.split(" ;; ")
                 for item_str in itens_split:
                     try:
+                        # Identifica a quantidade exata antes do "x " isolado
                         if "x " in item_str and " [R$ " in item_str:
-                            qtd_str, resto1 = item_str.split("x ", 1)
-                            qtd = int(qtd_str)
-                            desc, val_str = resto1.rsplit(" [R$ ", 1)
-                            val_total = float(val_str.replace("]", ""))
+                            partes_item = item_str.split("x ", 1)
+                            qtd = int(partes_item[0].strip())
+                            resto = partes_item[1]
+                            desc, val_str = resto.rsplit(" [R$ ", 1)
+                            val_total = float(val_str.replace("]", "").strip())
                             parsed_items.append({
                                 "desc": desc.strip(),
                                 "qtd": qtd,
@@ -538,7 +521,7 @@ with aba_consulta:
             
             col_e1, col_e2 = st.columns(2)
             with col_e1:
-                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=item["qtd"], step=1, key=f"edit_qtd_{i}")
+                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=int(item["qtd"]), step=1, key=f"edit_qtd_{i}")
             with col_e2:
                 val_unit_atual = item["val_total"] / item["qtd"] if item["qtd"] > 0 else 0.0
                 novo_val_unit = st.number_input(f"Val. Unit #{i+1} (R$)", min_value=0.0, format="%.2f", value=float(val_unit_atual), key=f"edit_val_unit_{i}")
@@ -652,25 +635,21 @@ with aba_clientes:
     if df.empty:
         st.info("Nenhum dado cadastrado.")
     else:
-        # Filtra apenas entradas
         df_clientes = df[df["Tipo"].str.contains("Entrada", case=False, na=False)].copy()
         
         if df_clientes.empty:
             st.info("Nenhum cliente cadastrado em vendas ainda.")
         else:
-            # Agrupa por cliente e telefone
             df_agrupado = df_clientes.groupby(["Cliente", "Telefone"]).agg(
                 Total_Gasto=("Valor Total", "sum"),
                 Qtd_Pedidos=("ID", "count"),
                 Ultima_Compra=("Data", "max")
             ).reset_index()
             
-            # Campo de busca rápida
             busca_cliente = st.text_input("🔍 Pesquisar Cliente por Nome:")
             if busca_cliente:
                 df_agrupado = df_agrupado[df_agrupado["Cliente"].str.contains(busca_cliente, case=False, na=False)]
             
-            # Renomeia colunas para exibição bonita
             df_agrupado.columns = ["Nome do Cliente", "Telefone / WhatsApp", "Total Gasto (R$)", "Qtd de Pedidos", "Última Compra"]
             df_agrupado = df_agrupado.sort_values(by="Total Gasto (R$)", ascending=False)
             
@@ -686,25 +665,21 @@ with aba_fornecedores:
     if df.empty:
         st.info("Nenhum dado cadastrado.")
     else:
-        # Filtra apenas saídas
         df_forn = df[df["Tipo"].str.contains("Saída", case=False, na=False)].copy()
         
         if df_forn.empty:
             st.info("Nenhum fornecedor cadastrado em despesas/saídas ainda.")
         else:
-            # Agrupa por fornecedor e telefone
             df_agrupado_forn = df_forn.groupby(["Cliente", "Telefone"]).agg(
                 Total_Gasto=("Valor Total", "sum"),
                 Qtd_Compras=("ID", "count"),
                 Ultima_Compra=("Data", "max")
             ).reset_index()
             
-            # Campo de busca rápida
             busca_forn = st.text_input("🔍 Pesquisar Fornecedor por Nome:")
             if busca_forn:
                 df_agrupado_forn = df_agrupado_forn[df_agrupado_forn["Cliente"].str.contains(busca_forn, case=False, na=False)]
             
-            # Renomeia colunas para exibição bonita
             df_agrupado_forn.columns = ["Nome do Fornecedor", "Telefone / Contato", "Total Investido (R$)", "Qtd de Compras", "Última Compra"]
             df_agrupado_forn = df_agrupado_forn.sort_values(by="Total Investido (R$)", ascending=False)
             
