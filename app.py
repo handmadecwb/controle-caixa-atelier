@@ -459,7 +459,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO DE LEITURA INDIVIDUAL)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO DE VALORES)
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -480,7 +480,6 @@ with aba_consulta:
         
         detalhes_brutos = str(row_pedido["Detalhes"])
         
-        # Garante o recarregamento correto e isolado ao trocar de pedido
         if st.session_state.current_edit_id != pedido_id:
             st.session_state.current_edit_id = pedido_id
             
@@ -489,7 +488,6 @@ with aba_consulta:
                 itens_split = detalhes_brutos.split(" ;; ")
                 for item_str in itens_split:
                     try:
-                        # Identifica a quantidade exata antes do "x " isolado
                         if "x " in item_str and " [R$ " in item_str:
                             partes_item = item_str.split("x ", 1)
                             qtd = int(partes_item[0].strip())
@@ -572,11 +570,12 @@ with aba_consulta:
             with col_d2:
                 edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
             
-            sugestao_total = valor_total_itens_edit if st.session_state.edit_order_items else row_pedido["Valor Total"]
+            # Utiliza a soma calculada dos itens como sugestão, mas permitindo alteração manual completa
+            sugestao_total = valor_total_itens_edit if valor_total_itens_edit > 0 else float(row_pedido["Valor Total"])
             
             col_d3, col_d4 = st.columns(2)
             with col_d3:
-                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(sugestao_total))
+                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=sugestao_total)
             with col_d4:
                 edit_valor_pago = st.number_input("Valor Pago (R$)", min_value=0.0, format="%.2f", value=float(row_pedido["Valor Pago"]))
             
@@ -671,7 +670,7 @@ with aba_fornecedores:
             st.info("Nenhum fornecedor cadastrado em despesas/saídas ainda.")
         else:
             df_agrupado_forn = df_forn.groupby(["Cliente", "Telefone"]).agg(
-                Total_Gasto=("Valor Total", "sum"),
+                Total_G_asto=("Valor Total", "sum"),
                 Qtd_Compras=("ID", "count"),
                 Ultima_Compra=("Data", "max")
             ).reset_index()
