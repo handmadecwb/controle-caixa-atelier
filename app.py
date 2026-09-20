@@ -106,7 +106,12 @@ def carregar_dados():
         worksheet = get_google_sheet()
         data = worksheet.get_all_records()
         if data:
-            return pd.DataFrame(data)
+            df_temp = pd.DataFrame(data)
+            # TRAVA DE SEGURANÇA: Transforma ID em número e remove linhas vazias/com erro
+            df_temp["ID"] = pd.to_numeric(df_temp["ID"], errors="coerce")
+            df_temp = df_temp.dropna(subset=["ID"])
+            df_temp["ID"] = df_temp["ID"].astype(int)
+            return df_temp
         else:
             df_vazio = pd.DataFrame(columns=colunas_padrao)
             worksheet.update(values=[colunas_padrao], range_name="A1")
@@ -156,6 +161,15 @@ aba_principal, aba_consulta = st.tabs(["📊 Caixa & Lançamentos", "🔍 Consul
 # ABA 1: CAIXA & LANÇAMENTOS
 # =========================================================================
 with aba_principal:
+    # ---> CÓDIGO QUE FALTAVA PARA EXIBIR A TABELA NA TELA PRINCIPAL <---
+    st.markdown("### 📊 Visão Geral do Caixa")
+    if df.empty:
+        st.info("Nenhum lançamento registrado ainda.")
+    else:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    st.markdown("---")
+    # -------------------------------------------------------------------
+
     st.sidebar.markdown("### ➕ Novo Lançamento / Pedido")
 
     data_registro = st.sidebar.date_input("Data do Registro", datetime.today(), format="DD/MM/YYYY")
