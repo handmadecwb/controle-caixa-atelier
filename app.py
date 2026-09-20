@@ -86,7 +86,6 @@ def get_google_sheet():
     # Limpa automaticamente qualquer espaço ou quebra de linha errada na chave privada
     if "private_key" in secrets_dict:
         pk = secrets_dict["private_key"].strip()
-        # Garante que as marcas de início e fim estejam limpas
         pk = pk.replace("\\n", "\n")
         secrets_dict["private_key"] = pk
 
@@ -154,21 +153,24 @@ st.markdown("## 🧵 handmadecwb: Gestão Integrada de Caixa & Pedidos")
 st.markdown("Controle de fluxo de caixa, bordados, costura, impressões DTF e histórico de fornecedores/clientes.")
 st.markdown("---")
 
-# Abas de Navegação Principal
-aba_principal, aba_consulta = st.tabs(["📊 Caixa & Lançamentos", "🔍 Consulta & Edição de Pedidos"])
+# Abas de Navegação Principal (Adicionadas Clientes e Fornecedores)
+aba_principal, aba_consulta, aba_clientes, aba_fornecedores = st.tabs([
+    "📊 Caixa & Lançamentos", 
+    "🔍 Consulta & Edição", 
+    "👥 Clientes", 
+    "🚚 Fornecedores"
+])
 
 # =========================================================================
 # ABA 1: CAIXA & LANÇAMENTOS
 # =========================================================================
 with aba_principal:
-    # ---> CÓDIGO QUE FALTAVA PARA EXIBIR A TABELA NA TELA PRINCIPAL <---
     st.markdown("### 📊 Visão Geral do Caixa")
     if df.empty:
         st.info("Nenhum lançamento registrado ainda.")
     else:
         st.dataframe(df, use_container_width=True, hide_index=True)
     st.markdown("---")
-    # -------------------------------------------------------------------
 
     st.sidebar.markdown("### ➕ Novo Lançamento / Pedido")
 
@@ -485,7 +487,6 @@ with aba_consulta:
     if df.empty:
         st.warning("Nenhum registro encontrado no sistema.")
     else:
-        # Exibir seleção em ordem decrescente (mais recentes primeiro)
         df_sorted = df.sort_values(by="ID", ascending=False)
         opcoes_pedidos = []
         for idx, row in df_sorted.iterrows():
@@ -493,16 +494,12 @@ with aba_consulta:
             
         pedido_selecionado_str = st.selectbox("Selecione o Lançamento / Pedido para Editar:", opcoes_pedidos)
         
-        # Extrair o ID
         pedido_id = int(pedido_selecionado_str.split(" - ")[0].replace("ID #", ""))
-        
-        # Encontrar no DataFrame
         idx_pedido = df[df["ID"] == pedido_id].index[0]
         row_pedido = df.loc[idx_pedido]
         
         detalhes_brutos = str(row_pedido["Detalhes"])
         
-        # Só parseia os itens ao mudar de pedido selecionado
         if st.session_state.current_edit_id != pedido_id:
             st.session_state.current_edit_id = pedido_id
             
@@ -561,7 +558,6 @@ with aba_consulta:
             
         st.session_state.edit_order_items = novos_itens_editados
         
-        # Adição de novos itens ao pedido atual
         with st.expander("➕ Adicionar NOVO item a este pedido"):
             add_desc = st.text_input("Descrição do novo item")
             col_a1, col_a2 = st.columns(2)
@@ -584,7 +580,6 @@ with aba_consulta:
 
         st.markdown("---")
         
-        # Formulário dos dados do Cliente e Pagamento
         with st.form("form_salvar_edicao_pedido"):
             st.markdown("#### 👤 Dados do Pedido / Pagamento")
             
@@ -646,3 +641,71 @@ with aba_consulta:
             st.session_state.current_edit_id = None
             st.success("Pedido excluído do sistema!")
             st.rerun()
+
+# =========================================================================
+# ABA 3: CLIENTES
+# =========================================================================
+with aba_clientes:
+    st.markdown("### 👥 Cadastro & Histórico de Clientes")
+    st.markdown("Lista consolidada de clientes extraída automaticamente dos registros de entrada.")
+    
+    if df.empty:
+        st.info("Nenhum dado cadastrado.")
+    else:
+        # Filtra apenas entradas
+        df_clientes = df[df["Tipo"].str.contains("Entrada", case=False, na=False)].copy()
+        
+        if df_clientes.empty:
+            st.info("Nenhum cliente cadastrado em vendas ainda.")
+        else:
+            # Agrupa por cliente e telefone
+            df_agrupado = df_clientes.groupby(["Cliente", "Telefone"]).agg(
+                Total_Gasto=("Valor Total", "sum"),
+                Qtd_Pedidos=("ID", "count"),
+                Ultima_Compra=("Data", "max")
+            ).reset_index()
+            
+            # Campo de busca rápida
+            busca_cliente = st.text_input("🔍 Pesquisar Cliente por Nome:")
+            if busca_cliente:
+                df_agrupado = df_agrupado[df_agrupado["Cliente"].str.contains(busca_cliente, case=False, na=False)]
+            
+            # Renomeia colunas para exibição bonita
+            df_agrupado.columns = ["Nome do Cliente", "Telefone / WhatsApp", "Total Gasto (R$)", "Qtd de Pedidos", "Última Compra"]
+            df_agrupado = df_agrupado.sort_values(by="Total Gasto (R$)", ascending=False)
+            
+            st.dataframe(df_agrupado, use_container_width=True, hide_index=True)
+
+# =========================================================================
+# ABA 4: FORNECEDORES
+# =========================================================================
+with aba_fornecedores:
+    st.markdown("### 🚚 Cadastro & Histórico de Fornecedores")
+    st.markdown("Lista consolidada de fornecedores e insumos extraída automaticamente dos registros de saída.")
+    
+    if df.empty:
+        st.info("Nenhum dado cadastrado.")
+    else:
+        # Filtra apenas saídas
+        df_forn = df[df["Tipo"].str.contains("Saída", case=False, na=False)].copy()
+        
+        if df_forn.empty:
+            st.info("Nenhum fornecedor cadastrado em despesas/saídas ainda.")
+        else:
+            # Agrupa por fornecedor e telefone
+            df_agrupado_forn = df_forn.groupby(["Cliente", "Telefone"]).agg(
+                Total_Gasto=("Valor Total", "sum"),
+                Qtd_Compras=("ID", "count"),
+                Ultima_Compra=("Data", "max")
+            ).reset_index()
+            
+            # Campo de busca rápida
+            busca_forn = st.text_input("🔍 Pesquisar Fornecedor por Nome:")
+            if busca_forn:
+                df_agrupado_forn = df_agrupado_forn[df_agrupado_forn["Cliente"].str.contains(busca_forn, case=False, na=False)]
+            
+            # Renomeia colunas para exibição bonita
+            df_agrupado_forn.columns = ["Nome do Fornecedor", "Telefone / Contato", "Total Investido (R$)", "Qtd de Compras", "Última Compra"]
+            df_agrupado_forn = df_agrupado_forn.sort_values(by="Total Investido (R$)", ascending=False)
+            
+            st.dataframe(df_agrupado_forn, use_container_width=True, hide_index=True)
