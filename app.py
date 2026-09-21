@@ -466,7 +466,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (VALOR TOTAL PERSISTENTE)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (COM DESCRIÇÃO AMPLIADA)
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -523,7 +523,8 @@ with aba_consulta:
         for i, item in enumerate(st.session_state.edit_order_items):
             st.caption(f"**Item #{i+1}**")
             
-            novo_desc = st.text_input(f"Descrição #{i+1}", value=str(item["desc"]), key=f"edit_desc_{i}")
+            # Usando text_area para permitir editar facilmente textos maiores como as especificações do DTF (ex: Com/Sem Prensagem)
+            novo_desc = st.text_area(f"Descrição / Especificações #{i+1}", value=str(item["desc"]), key=f"edit_desc_{i}", height=75)
             
             col_e1, col_e2 = st.columns(2)
             with col_e1:
@@ -548,7 +549,7 @@ with aba_consulta:
         st.session_state.edit_order_items = novos_itens_editados
         
         with st.expander("➕ Adicionar NOVO item a este pedido"):
-            add_desc = st.text_input("Descrição do novo item")
+            add_desc = st.text_area("Descrição / Especificações do novo item", key="add_desc_text")
             col_a1, col_a2 = st.columns(2)
             with col_a1:
                 add_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1, key="add_qtd")
@@ -578,7 +579,6 @@ with aba_consulta:
             with col_d2:
                 edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
             
-            # Mantém o valor salvo atual ou usa o valor carregado da planilha sem sobrescrever cegamente
             valor_padrao_total = st.session_state.manual_valor_total if st.session_state.manual_valor_total is not None else float(row_pedido["Valor Total"])
             
             col_d3, col_d4 = st.columns(2)
@@ -597,7 +597,9 @@ with aba_consulta:
                 if st.session_state.edit_order_items:
                     partes = []
                     for it in st.session_state.edit_order_items:
-                        partes.append(f"{it['qtd']}x {it['desc']} [R$ {it['val_total']:.2f}]")
+                        # Limpa quebras de linha excessivas na string para salvar limpo na planilha
+                        desc_limpa = it['desc'].replace("\n", " ")
+                        partes.append(f"{it['qtd']}x {desc_limpa} [R$ {it['val_total']:.2f}]")
                     nova_string_detalhes = " ;; ".join(partes)
                 else:
                     nova_string_detalhes = "Lançamento sem itens especificados"
@@ -610,7 +612,6 @@ with aba_consulta:
                 else:
                     novo_status = "Quitado"
                 
-                # Atualiza a variável de estado manual para refletir o novo valor salvo
                 st.session_state.manual_valor_total = float(edit_valor_total)
                 
                 df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
