@@ -108,7 +108,6 @@ def carregar_dados():
             df_temp = df_temp.dropna(subset=["ID"])
             df_temp["ID"] = df_temp["ID"].astype(int)
             
-            # Garantir tipos corretos nas colunas numéricas desde o carregamento
             df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
             df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
             df_temp["Restante"] = pd.to_numeric(df_temp["Restante"], errors="coerce").fillna(0.0)
@@ -141,6 +140,9 @@ if "edit_order_items" not in st.session_state:
 
 if "current_edit_id" not in st.session_state:
     st.session_state.current_edit_id = None
+
+if "manual_valor_total" not in st.session_state:
+    st.session_state.manual_valor_total = None
 
 st.sidebar.markdown("### 🔒 Sessão")
 if st.sidebar.button("Bloquear / Sair"):
@@ -464,7 +466,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO SEGURA DE TIPOS)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (VALOR TOTAL PERSISTENTE)
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -487,6 +489,7 @@ with aba_consulta:
         
         if st.session_state.current_edit_id != pedido_id:
             st.session_state.current_edit_id = pedido_id
+            st.session_state.manual_valor_total = float(row_pedido["Valor Total"])
             
             parsed_items = []
             if detalhes_brutos and detalhes_brutos != "Lançamento direto sem itens especificados":
@@ -575,11 +578,12 @@ with aba_consulta:
             with col_d2:
                 edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
             
-            sugestao_total = valor_total_itens_edit if valor_total_itens_edit > 0 else float(row_pedido["Valor Total"])
+            # Mantém o valor salvo atual ou usa o valor carregado da planilha sem sobrescrever cegamente
+            valor_padrao_total = st.session_state.manual_valor_total if st.session_state.manual_valor_total is not None else float(row_pedido["Valor Total"])
             
             col_d3, col_d4 = st.columns(2)
             with col_d3:
-                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(sugestao_total))
+                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(valor_padrao_total))
             with col_d4:
                 edit_valor_pago = st.number_input("Valor Pago (R$)", min_value=0.0, format="%.2f", value=float(row_pedido["Valor Pago"]))
             
@@ -606,12 +610,13 @@ with aba_consulta:
                 else:
                     novo_status = "Quitado"
                 
-                # ABORDAGEM SEGURA PARA ATUALIZAÇÃO DO DATAFRAME
+                # Atualiza a variável de estado manual para refletir o novo valor salvo
+                st.session_state.manual_valor_total = float(edit_valor_total)
+                
                 df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
                 df.loc[idx_pedido, "Telefone"] = str(edit_telefone)
                 df.loc[idx_pedido, "Detalhes"] = str(nova_string_detalhes)
                 
-                # Forçar conversão estrita com .astype() para evitar o erro de LossySetItemError
                 df["Valor Total"] = df["Valor Total"].astype(float)
                 df["Valor Pago"] = df["Valor Pago"].astype(float)
                 df["Restante"] = df["Restante"].astype(float)
@@ -624,7 +629,6 @@ with aba_consulta:
                 df.loc[idx_pedido, "Status"] = str(novo_status)
                 
                 salvar_dados(df)
-                st.session_state.current_edit_id = None
                 st.success("Pedido atualizado com sucesso!")
                 st.rerun()
 
@@ -633,6 +637,7 @@ with aba_consulta:
             df = df.drop(idx_pedido)
             salvar_dados(df)
             st.session_state.current_edit_id = None
+            st.session_state.manual_valor_total = None
             st.success("Pedido excluído do sistema!")
             st.rerun()
 
