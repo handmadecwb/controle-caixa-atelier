@@ -107,6 +107,11 @@ def carregar_dados():
             df_temp["ID"] = pd.to_numeric(df_temp["ID"], errors="coerce")
             df_temp = df_temp.dropna(subset=["ID"])
             df_temp["ID"] = df_temp["ID"].astype(int)
+            
+            # Garantir tipos corretos nas colunas numéricas desde o carregamento
+            df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
+            df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
+            df_temp["Restante"] = pd.to_numeric(df_temp["Restante"], errors="coerce").fillna(0.0)
             return df_temp
         else:
             df_vazio = pd.DataFrame(columns=colunas_padrao)
@@ -459,7 +464,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO DE TIPOS E VALORES)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO SEGURA DE TIPOS)
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -601,22 +606,20 @@ with aba_consulta:
                 else:
                     novo_status = "Quitado"
                 
-                # Conversão segura para evitar conflitos de tipo no Pandas
-                df["Cliente"] = df["Cliente"].astype(str)
-                df["Telefone"] = df["Telefone"].astype(str)
-                df["Detalhes"] = df["Detalhes"].astype(str)
-                df["Valor Total"] = pd.to_numeric(df["Valor Total"], errors="coerce").fillna(0.0)
-                df["Valor Pago"] = pd.to_numeric(df["Valor Pago"], errors="coerce").fillna(0.0)
-                df["Restante"] = pd.to_numeric(df["Restante"], errors="coerce").fillna(0.0)
-                df["Forma de Pagamento"] = df["Forma de Pagamento"].astype(str)
-                df["Status"] = df["Status"].astype(str)
-
+                # ABORDAGEM SEGURA PARA ATUALIZAÇÃO DO DATAFRAME
                 df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
                 df.loc[idx_pedido, "Telefone"] = str(edit_telefone)
                 df.loc[idx_pedido, "Detalhes"] = str(nova_string_detalhes)
+                
+                # Forçar conversão estrita com .astype() para evitar o erro de LossySetItemError
+                df["Valor Total"] = df["Valor Total"].astype(float)
+                df["Valor Pago"] = df["Valor Pago"].astype(float)
+                df["Restante"] = df["Restante"].astype(float)
+                
                 df.loc[idx_pedido, "Valor Total"] = float(edit_valor_total)
                 df.loc[idx_pedido, "Valor Pago"] = float(edit_valor_pago)
                 df.loc[idx_pedido, "Restante"] = float(novo_restante)
+                
                 df.loc[idx_pedido, "Forma de Pagamento"] = str(edit_forma_pgto)
                 df.loc[idx_pedido, "Status"] = str(novo_status)
                 
