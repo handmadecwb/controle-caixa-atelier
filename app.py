@@ -441,12 +441,12 @@ with aba_principal:
                 "Data": data_registro.strftime("%d/%m/%Y"),
                 "Tipo": tipo,
                 "Categoria": categoria,
-                "Cliente": nome_cliente if nome_cliente else "Não informado",
-                "Telefone": telefone_cliente if telefone_cliente else "Não informado",
+                "Cliente": str(nome_cliente) if nome_cliente else "Não informado",
+                "Telefone": str(telefone_cliente) if telefone_cliente else "Não informado",
                 "Detalhes": detalhes_final,
-                "Valor Total": valor_total_pedido,
-                "Valor Pago": valor_pago,
-                "Restante": restante,
+                "Valor Total": float(valor_total_pedido),
+                "Valor Pago": float(valor_pago),
+                "Restante": float(restante),
                 "Forma de Pagamento": forma_pgto,
                 "Status": status
             }])
@@ -459,7 +459,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO DE VALORES)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (CORREÇÃO DE TIPOS E VALORES)
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -515,7 +515,7 @@ with aba_consulta:
         for i, item in enumerate(st.session_state.edit_order_items):
             st.caption(f"**Item #{i+1}**")
             
-            novo_desc = st.text_input(f"Descrição #{i+1}", value=item["desc"], key=f"edit_desc_{i}")
+            novo_desc = st.text_input(f"Descrição #{i+1}", value=str(item["desc"]), key=f"edit_desc_{i}")
             
             col_e1, col_e2 = st.columns(2)
             with col_e1:
@@ -570,12 +570,11 @@ with aba_consulta:
             with col_d2:
                 edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
             
-            # Utiliza a soma calculada dos itens como sugestão, mas permitindo alteração manual completa
             sugestao_total = valor_total_itens_edit if valor_total_itens_edit > 0 else float(row_pedido["Valor Total"])
             
             col_d3, col_d4 = st.columns(2)
             with col_d3:
-                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=sugestao_total)
+                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(sugestao_total))
             with col_d4:
                 edit_valor_pago = st.number_input("Valor Pago (R$)", min_value=0.0, format="%.2f", value=float(row_pedido["Valor Pago"]))
             
@@ -594,22 +593,32 @@ with aba_consulta:
                 else:
                     nova_string_detalhes = "Lançamento sem itens especificados"
                 
-                novo_restante = edit_valor_total - edit_valor_pago
-                if edit_valor_total <= 0.0:
+                novo_restante = float(edit_valor_total) - float(edit_valor_pago)
+                if float(edit_valor_total) <= 0.0:
                     novo_status = "Em Orçamento / Em Estudo"
                 elif novo_restante > 0.001:
                     novo_status = "Pendente"
                 else:
                     novo_status = "Quitado"
                 
-                df.at[idx_pedido, "Cliente"] = edit_cliente
-                df.at[idx_pedido, "Telefone"] = edit_telefone
-                df.at[idx_pedido, "Detalhes"] = nova_string_detalhes
-                df.at[idx_pedido, "Valor Total"] = edit_valor_total
-                df.at[idx_pedido, "Valor Pago"] = edit_valor_pago
-                df.at[idx_pedido, "Restante"] = novo_restante
-                df.at[idx_pedido, "Forma de Pagamento"] = edit_forma_pgto
-                df.at[idx_pedido, "Status"] = novo_status
+                # Conversão segura para evitar conflitos de tipo no Pandas
+                df["Cliente"] = df["Cliente"].astype(str)
+                df["Telefone"] = df["Telefone"].astype(str)
+                df["Detalhes"] = df["Detalhes"].astype(str)
+                df["Valor Total"] = pd.to_numeric(df["Valor Total"], errors="coerce").fillna(0.0)
+                df["Valor Pago"] = pd.to_numeric(df["Valor Pago"], errors="coerce").fillna(0.0)
+                df["Restante"] = pd.to_numeric(df["Restante"], errors="coerce").fillna(0.0)
+                df["Forma de Pagamento"] = df["Forma de Pagamento"].astype(str)
+                df["Status"] = df["Status"].astype(str)
+
+                df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
+                df.loc[idx_pedido, "Telefone"] = str(edit_telefone)
+                df.loc[idx_pedido, "Detalhes"] = str(nova_string_detalhes)
+                df.loc[idx_pedido, "Valor Total"] = float(edit_valor_total)
+                df.loc[idx_pedido, "Valor Pago"] = float(edit_valor_pago)
+                df.loc[idx_pedido, "Restante"] = float(novo_restante)
+                df.loc[idx_pedido, "Forma de Pagamento"] = str(edit_forma_pgto)
+                df.loc[idx_pedido, "Status"] = str(novo_status)
                 
                 salvar_dados(df)
                 st.session_state.current_edit_id = None
