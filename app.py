@@ -111,8 +111,12 @@ def carregar_dados():
             df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
             df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
             
-            # Garante que o Restante seja sempre recalculado automaticamente
             df_temp["Restante"] = df_temp["Valor Total"] - df_temp["Valor Pago"]
+            
+            df_temp["Status"] = df_temp.apply(
+                lambda r: "Em Orçamento / Em Estudo" if r["Valor Total"] <= 0 
+                else ("Pendente" if r["Restante"] > 0.001 else "Quitado"), axis=1
+            )
             return df_temp
         else:
             df_vazio = pd.DataFrame(columns=colunas_padrao)
@@ -171,6 +175,17 @@ with aba_principal:
     if df.empty:
         st.info("Nenhum lançamento registrado ainda.")
     else:
+        # Exibe cards de totais consolidados
+        total_geral = df["Valor Total"].sum()
+        total_pago = df["Valor Pago"].sum()
+        total_restante = df["Restante"].sum()
+        
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("💰 Valor Total Geral", f"R$ {total_geral:.2f}")
+        col_m2.metric("✅ Total Pago", f"R$ {total_pago:.2f}")
+        col_m3.metric("⏳ Total Restante (Pendente)", f"R$ {total_restante:.2f}")
+        
+        st.markdown("---")
         st.dataframe(df, use_container_width=True, hide_index=True)
     st.markdown("---")
 
@@ -242,9 +257,9 @@ with aba_principal:
         with col_dtf3:
             dtf_qtd = st.number_input("Quantidade de Peças", min_value=1, value=1, step=1)
         with col_dtf4:
-            dtf_posicao = st.sidebar.selectbox("Posição da Estampa", ["Frente", "Costas", "Frente e Costas", "Manga / Localizada"])
+            dtf_posicao = st.selectbox("Posição da Estampa", ["Frente", "Costas", "Frente e Costas", "Manga / Localizada"])
 
-        dtf_prensagem = st.sidebar.selectbox("Inclui Prensagem?", ["Apenas Filme (Sem Prensagem)", "Sim (Com Prensagem na Peça)"])
+        dtf_prensagem = st.selectbox("Inclui Prensagem?", ["Apenas Filme (Sem Prensagem)", "Sim (Com Prensagem na Peça)"])
         dtf_valor_unit = st.sidebar.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
         dtf_obs = st.sidebar.text_input("Observação Adicional (opcional)")
 
@@ -278,7 +293,10 @@ with aba_principal:
         with col_ins1:
             ins_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1)
         with col_ins2:
-            ins_unidade = st.selectbox("Unidade de Medida", ["Metros", "Unidades", "Bobinas", "Cones", "Pacotes", "Litros"])
+            ins_unidade = st.selectbox(
+                "Unidade de Medida", 
+                ["Metros", "Unidades", "Bobinas", "Cones", "Pacotes", "Litros"]
+            )
 
         ins_valor_unit = st.sidebar.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
         ins_obs = st.sidebar.text_input("Observação / Marca / Especificação")
@@ -379,7 +397,9 @@ with aba_principal:
             edit_reforma = st.selectbox("É Reforma?", lista_ref, index=idx_ref)
             
             edit_obs = st.text_input("Observação", value=item_atual["Obs"])
-            edit_val_unit_cart = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=float(item_atual["ValorTotal"] / item_atual["Qtd"]) if item_atual["Qtd"] > 0 else 0.0)
+            
+            val_unit_inicial = float(item_atual["ValorTotal"] / item_atual["Qtd"]) if item_atual["Qtd"] > 0 else 0.0
+            edit_val_unit_cart = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=val_unit_inicial)
             
             btn_salvar_edit = st.form_submit_button("💾 Confirmar Alteração")
             
@@ -426,16 +446,19 @@ with aba_principal:
                 for it in st.session_state.carrinho_itens:
                     ref_tag = " [REFORMA]" if it["Reforma"] == "Sim" else ""
                     obs_str = f" - {it['Obs']}" if it['Obs'].strip() else ""
-                    partes_detalhes.append(f"{it['Qtd']}x {it['Tamanho']} ({it['Cor']}){ref_tag}{obs_str} [R$ {it['ValorTotal']:.2f}]")
+                    val_item = float(it.get('ValorTotal', 0.0))
+                    partes_detalhes.append(f"{it['Qtd']}x {it['Tamanho']} ({it['Cor']}){ref_tag}{obs_str} [R$ {val_item:.2f}]")
                 detalhes_final = " ;; ".join(partes_detalhes)
             else:
                 detalhes_final = "Lançamento direto sem itens especificados"
 
-            restante = valor_total_pedido - valor_pago
+            val_total_final = float(valor_total_pedido)
+            val_pago_final = float(valor_pago)
+            restante_final = val_total_final - val_pago_final
             
-            if valor_total_pedido <= 0.0:
+            if val_total_final <= 0.0:
                 status = "Em Orçamento / Em Estudo"
-            elif restante > 0.001:
+            elif restante_final > 0.001:
                 status = "Pendente"
             else:
                 status = "Quitado"
@@ -453,9 +476,9 @@ with aba_principal:
                 "Cliente": str(nome_cliente) if nome_cliente else "Não informado",
                 "Telefone": str(telefone_cliente) if telefone_cliente else "Não informado",
                 "Detalhes": detalhes_final,
-                "Valor Total": float(valor_total_pedido),
-                "Valor Pago": float(valor_pago),
-                "Restante": float(restante),
+                "Valor Total": val_total_final,
+                "Valor Pago": val_pago_final,
+                "Restante": restante_final,
                 "Forma de Pagamento": forma_pgto,
                 "Status": status
             }])
@@ -468,7 +491,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (COM DESCRIÇÃO AMPLIADA)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -491,7 +514,7 @@ with aba_consulta:
         
         if st.session_state.current_edit_id != pedido_id:
             st.session_state.current_edit_id = pedido_id
-            st.session_state.manual_valor_total = float(row_pedido["Valor Total"])
+            st.session_state.manual_valor_total = None
             
             parsed_items = []
             if detalhes_brutos and detalhes_brutos != "Lançamento direto sem itens especificados":
@@ -520,184 +543,4 @@ with aba_consulta:
         st.markdown("#### 📋 Itens Individuais do Pedido (Edição & Exclusão)")
         
         novos_itens_editados = []
-        valor_total_itens_edit = 0.0
-        
-        for i, item in enumerate(st.session_state.edit_order_items):
-            st.caption(f"**Item #{i+1}**")
-            
-            novo_desc = st.text_area(f"Descrição / Especificações #{i+1}", value=str(item["desc"]), key=f"edit_desc_{i}", height=75)
-            
-            col_e1, col_e2 = st.columns(2)
-            with col_e1:
-                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=int(item["qtd"]), step=1, key=f"edit_qtd_{i}")
-            with col_e2:
-                val_unit_atual = item["val_total"] / item["qtd"] if item["qtd"] > 0 else 0.0
-                novo_val_unit = st.number_input(f"Val. Unit #{i+1} (R$)", min_value=0.0, format="%.2f", value=float(val_unit_atual), key=f"edit_val_unit_{i}")
-            
-            if st.button(f"🗑️ Excluir Item #{i+1}", key=f"del_item_{i}"):
-                st.session_state.edit_order_items.pop(i)
-                st.rerun()
-            
-            novo_val_total = nova_qtd * novo_val_unit
-            novos_itens_editados.append({
-                "desc": novo_desc,
-                "qtd": nova_qtd,
-                "val_total": novo_val_total
-            })
-            valor_total_itens_edit += novo_val_total
-            st.markdown("---")
-            
-        st.session_state.edit_order_items = novos_itens_editados
-        
-        with st.expander("➕ Adicionar NOVO item a este pedido"):
-            add_desc = st.text_area("Descrição / Especificações do novo item", key="add_desc_text")
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                add_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1, key="add_qtd")
-            with col_a2:
-                add_val_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0, key="add_val_unit")
-            
-            if st.button("Adicionar Item ao Pedido"):
-                if add_desc.strip():
-                    st.session_state.edit_order_items.append({
-                        "desc": add_desc,
-                        "qtd": add_qtd,
-                        "val_total": add_qtd * add_val_unit
-                    })
-                    st.success("Item adicionado ao pedido!")
-                    st.rerun()
-                else:
-                    st.warning("Preencha a descrição do item.")
-
-        st.markdown("---")
-        
-        with st.form("form_salvar_edicao_pedido"):
-            st.markdown("#### 👤 Dados do Pedido / Pagamento")
-            
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                edit_cliente = st.text_input("Cliente / Fornecedor", value=str(row_pedido["Cliente"]))
-            with col_d2:
-                edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
-            
-            valor_padrao_total = st.session_state.manual_valor_total if st.session_state.manual_valor_total is not None else float(row_pedido["Valor Total"])
-            
-            col_d3, col_d4 = st.columns(2)
-            with col_d3:
-                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(valor_padrao_total))
-            with col_d4:
-                edit_valor_pago = st.number_input("Valor Pago (R$)", min_value=0.0, format="%.2f", value=float(row_pedido["Valor Pago"]))
-            
-            formas_pgto = ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "Fiado / Pendente"]
-            idx_pgto = formas_pgto.index(row_pedido["Forma de Pagamento"]) if row_pedido["Forma de Pagamento"] in formas_pgto else 0
-            edit_forma_pgto = st.selectbox("Forma de Pagamento", formas_pgto, index=idx_pgto)
-            
-            btn_salvar_alteracoes = st.form_submit_button("💾 Salvar Alterações na Planilha")
-            
-            if btn_salvar_alteracoes:
-                if st.session_state.edit_order_items:
-                    partes = []
-                    for it in st.session_state.edit_order_items:
-                        desc_limpa = it['desc'].replace("\n", " ")
-                        partes.append(f"{it['qtd']}x {desc_limpa} [R$ {it['val_total']:.2f}]")
-                    nova_string_detalhes = " ;; ".join(partes)
-                else:
-                    nova_string_detalhes = "Lançamento sem itens especificados"
-                
-                novo_restante = float(edit_valor_total) - float(edit_valor_pago)
-                if float(edit_valor_total) <= 0.0:
-                    novo_status = "Em Orçamento / Em Estudo"
-                elif novo_restante > 0.001:
-                    novo_status = "Pendente"
-                else:
-                    novo_status = "Quitado"
-                
-                st.session_state.manual_valor_total = float(edit_valor_total)
-                
-                df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
-                df.loc[idx_pedido, "Telefone"] = str(edit_telefone)
-                df.loc[idx_pedido, "Detalhes"] = str(nova_string_detalhes)
-                
-                df["Valor Total"] = df["Valor Total"].astype(float)
-                df["Valor Pago"] = df["Valor Pago"].astype(float)
-                df["Restante"] = df["Restante"].astype(float)
-                
-                df.loc[idx_pedido, "Valor Total"] = float(edit_valor_total)
-                df.loc[idx_pedido, "Valor Pago"] = float(edit_valor_pago)
-                df.loc[idx_pedido, "Restante"] = float(novo_restante)
-                
-                df.loc[idx_pedido, "Forma de Pagamento"] = str(edit_forma_pgto)
-                df.loc[idx_pedido, "Status"] = str(novo_status)
-                
-                salvar_dados(df)
-                st.success("Pedido atualizado com sucesso!")
-                st.rerun()
-
-        st.markdown("---")
-        if st.button("🚨 Excluir Pedido Inteiro", type="primary"):
-            df = df.drop(idx_pedido)
-            salvar_dados(df)
-            st.session_state.current_edit_id = None
-            st.session_state.manual_valor_total = None
-            st.success("Pedido excluído do sistema!")
-            st.rerun()
-
-# =========================================================================
-# ABA 3: CLIENTES
-# =========================================================================
-with aba_clientes:
-    st.markdown("### 👥 Cadastro & Histórico de Clientes")
-    st.markdown("Lista consolidada de clientes extraída automaticamente dos registros de entrada.")
-    
-    if df.empty:
-        st.info("Nenhum dado cadastrado.")
-    else:
-        df_clientes = df[df["Tipo"].str.contains("Entrada", case=False, na=False)].copy()
-        
-        if df_clientes.empty:
-            st.info("Nenhum cliente cadastrado em vendas ainda.")
-        else:
-            df_agrupado = df_clientes.groupby(["Cliente", "Telefone"]).agg(
-                Total_Gasto=("Valor Total", "sum"),
-                Qtd_Pedidos=("ID", "count"),
-                Ultima_Compra=("Data", "max")
-            ).reset_index()
-            
-            busca_cliente = st.text_input("🔍 Pesquisar Cliente por Nome:")
-            if busca_cliente:
-                df_agrupado = df_agrupado[df_agrupado["Cliente"].str.contains(busca_cliente, case=False, na=False)]
-            
-            df_agrupado.columns = ["Nome do Cliente", "Telefone / WhatsApp", "Total Gasto (R$)", "Qtd de Pedidos", "Última Compra"]
-            df_agrupado = df_agrupado.sort_values(by="Total Gasto (R$)", ascending=False)
-            
-            st.dataframe(df_agrupado, use_container_width=True, hide_index=True)
-
-# =========================================================================
-# ABA 4: FORNECEDORES
-# =========================================================================
-with aba_fornecedores:
-    st.markdown("### 🚚 Cadastro & Histórico de Fornecedores")
-    st.markdown("Lista consolidada de fornecedores e insumos extraída automaticamente dos registros de saída.")
-    
-    if df.empty:
-        st.info("Nenhum dado cadastrado.")
-    else:
-        df_forn = df[df["Tipo"].str.contains("Saída", case=False, na=False)].copy()
-        
-        if df_forn.empty:
-            st.info("Nenhum fornecedor cadastrado em despesas/saídas ainda.")
-        else:
-            df_agrupado_forn = df_forn.groupby(["Cliente", "Telefone"]).agg(
-                Total_Gasto=("Valor Total", "sum"),
-                Qtd_Compras=("ID", "count"),
-                Ultima_Compra=("Data", "max")
-            ).reset_index()
-            
-            busca_forn = st.text_input("🔍 Pesquisar Fornecedor por Nome:")
-            if busca_forn:
-                df_agrupado_forn = df_agrupado_forn[df_agrupado_forn["Cliente"].str.contains(busca_forn, case=False, na=False)]
-            
-            df_agrupado_forn.columns = ["Nome do Fornecedor", "Telefone / WhatsApp", "Total Gasto (R$)", "Qtd de Compras", "Última Compra"]
-            df_agrupado_forn = df_agrupado_forn.sort_values(by="Total Gasto (R$)", ascending=False)
-            
-            st.dataframe(df_agrupado_forn, use_container_width=True, hide_index=True)
+        valor_total_itens_edit =
