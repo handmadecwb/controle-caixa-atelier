@@ -256,4 +256,40 @@ with aba_principal:
             dtf_posicao = st.selectbox("Posição da Estampa", ["Frente", "Costas", "Frente e Costas", "Manga / Localizada"])
 
         dtf_prensagem = st.selectbox("Inclui Prensagem?", ["Apenas Filme (Sem Prensagem)", "Sim (Com Prensagem na Peça)"])
-        dtf_valor_unit = st.sidebar.number_input("Valor Unitário (
+        dtf_valor_unit = st.sidebar.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
+        dtf_obs = st.sidebar.text_input("Observação Adicional (opcional)")
+
+        if st.sidebar.button("➕ Adicionar DTF ao Pedido"):
+            qtd_final = dtf_qtd if dtf_qtd > 0 else 1
+            valor_total_dtf = dtf_valor_unit * qtd_final
+            obs_texto = f" - Obs: {dtf_obs}" if dtf_obs else ""
+            descricao_completa = f"DTF [{dtf_largura}x{dtf_altura}cm] - Posição: {dtf_posicao} - {dtf_prensagem}{obs_texto}"
+            
+            st.session_state.carrinho_itens.append({
+                "Tamanho": f"{dtf_largura}x{dtf_altura}cm",
+                "Cor": f"DTF ({dtf_posicao})",
+                "Qtd": qtd_final,
+                "Reforma": "Não",
+                "Obs": descricao_completa,
+                "ValorTotal": valor_total_dtf
+            })
+            st.success("Lote de DTF adicionado à lista!")
+            st.rerun()
+
+    elif categoria == "Insumos / Materiais":
+        st.sidebar.markdown("**🛠️ Cadastro de Insumo / Material / Peça:**")
+        tipo_insumo = st.sidebar.selectbox("Tipo de Insumo", [
+            "Tecido", "Linha / Insumo de Costura", "Agulha", "Peça p/ Máquina Reta", 
+            "Peça p/ Máquina Overlock", "Peça p/ Bordadeira", "Insumo p/ Prensa / DTF", 
+            "Ferramenta / Acessório Geral", "Outro"
+        ])
+        nome_item_insumo = st.sidebar.text_input("Descrição do Item")
+        
+        col_ins1, col_ins2 = st.sidebar.columns(2)
+        with col_ins1:
+            ins_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1)
+        with col_ins2:
+            ins_unidade = st.selectbox(
+                "Unidade de Medida", 
+                ["Metros", "Unidades", "Bobinas", "Cones", "Pacotes", "Litros"]
+            )
