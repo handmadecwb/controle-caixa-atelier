@@ -110,7 +110,9 @@ def carregar_dados():
             
             df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
             df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
-            df_temp["Restante"] = pd.to_numeric(df_temp["Restante"], errors="coerce").fillna(0.0)
+            
+            # Garante que o Restante seja sempre recalculado automaticamente
+            df_temp["Restante"] = df_temp["Valor Total"] - df_temp["Valor Pago"]
             return df_temp
         else:
             df_vazio = pd.DataFrame(columns=colunas_padrao)
