@@ -491,28 +491,4 @@ with aba_consulta:
         df_sorted = df.sort_values(by="ID", ascending=False)
         opcoes_pedidos = []
         for idx, row in df_sorted.iterrows():
-            opcoes_pedidos.append(f"ID #{row['ID']} - {row['Data']} - {row['Cliente']} (Total: R$ {row['Valor Total']})")
-            
-        pedido_selecionado_str = st.selectbox("Selecione o Lançamento / Pedido para Editar:", opcoes_pedidos)
-        
-        pedido_id = int(pedido_selecionado_str.split(" - ")[0].replace("ID #", ""))
-        idx_pedido = df[df["ID"] == pedido_id].index[0]
-        row_pedido = df.loc[idx_pedido]
-        
-        detalhes_brutos = str(row_pedido["Detalhes"])
-        
-        if st.session_state.current_edit_id != pedido_id:
-            st.session_state.current_edit_id = pedido_id
-            st.session_state.manual_valor_total = None
-            
-            parsed_items = []
-            if detalhes_brutos and detalhes_brutos != "Lançamento direto sem itens especificados":
-                itens_split = detalhes_brutos.split(" ;; ")
-                for item_str in itens_split:
-                    try:
-                        if "x " in item_str and " [R$ " in item_str:
-                            partes_item = item_str.split("x ", 1)
-                            qtd = int(partes_item[0].strip())
-                            resto = partes_item[1]
-                            desc, val_str = resto.rsplit(" [R$ ", 1)
-                            val_total = float
+            opcoes_pedidos
