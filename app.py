@@ -333,4 +333,209 @@ with aba_principal:
                 item_reforma = st.selectbox("É Reforma?", ["Não", "Sim"])
 
             item_obs = st.text_input("Detalhe/Observação do item (ex: barra, ajuste)")
-            item_valor_unit = st
+            item_valor_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
+
+            btn_adicionar = st.form_submit_button("➕ Adicionar este item na lista")
+            
+            if btn_adicionar:
+                cor_final = item_cor_custom.strip() if item_cor_sel == "Outra" and item_cor_custom.strip() else item_cor_sel
+                valor_total_item = item_valor_unit * item_qtd
+                st.session_state.carrinho_itens.append({
+                    "Tamanho": item_tam,
+                    "Cor": cor_final,
+                    "Qtd": item_qtd,
+                    "Reforma": item_reforma,
+                    "Obs": item_obs if item_obs else "",
+                    "ValorTotal": valor_total_item
+                })
+                st.rerun()
+
+    if st.session_state.carrinho_itens:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"### 🛒 Carrinho ({len(st.session_state.carrinho_itens)} itens)")
+        
+        soma_calculada_itens = 0.0
+        opcoes_itens = []
+        
+        for idx, it in enumerate(st.session_state.carrinho_itens):
+            soma_calculada_itens += it["ValorTotal"]
+            ref_texto = " [REFORMA]" if it["Reforma"] == "Sim" else ""
+            label = f"[{idx+1}] {it['Qtd']}x {it['Tamanho']} ({it['Cor']}){ref_texto} - R$ {it['ValorTotal']:.2f}"
+            opcoes_itens.append(label)
+            st.sidebar.caption(label)
+            
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**✏️ Editar / Remover Item:**")
+        
+        item_selecionado_idx = st.sidebar.selectbox(
+            "Selecione o item para alterar:", 
+            options=range(len(opcoes_itens)), 
+            format_func=lambda x: f"Item #{x+1}"
+        )
+        
+        item_atual = st.session_state.carrinho_itens[item_selecionado_idx]
+        
+        with st.sidebar.form(f"form_editar_item_{item_selecionado_idx}"):
+            edit_tam = st.text_input("Descrição / Tamanho / Medida", value=item_atual["Tamanho"])
+            edit_cor = st.text_input("Categoria / Cor / Tipo", value=item_atual["Cor"])
+            edit_qtd = st.number_input("Qtd", min_value=1, value=int(item_atual["Qtd"]), step=1)
+            
+            lista_ref = ["Não", "Sim"]
+            idx_ref = lista_ref.index(item_atual["Reforma"]) if item_atual["Reforma"] in lista_ref else 0
+            edit_reforma = st.selectbox("É Reforma?", lista_ref, index=idx_ref)
+            
+            edit_obs = st.text_input("Observação", value=item_atual["Obs"])
+            edit_val_unit_cart = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=float(item_atual["ValorTotal"] / item_atual["Qtd"]) if item_atual["Qtd"] > 0 else 0.0)
+            
+            btn_salvar_edit = st.form_submit_button("💾 Confirmar Alteração")
+            
+            if btn_salvar_edit:
+                novo_total_item = edit_val_unit_cart * edit_qtd
+                st.session_state.carrinho_itens[item_selecionado_idx] = {
+                    "Tamanho": edit_tam,
+                    "Cor": edit_cor,
+                    "Qtd": edit_qtd,
+                    "Reforma": edit_reforma,
+                    "Obs": edit_obs,
+                    "ValorTotal": novo_total_item
+                }
+                st.success("Item atualizado!")
+                st.rerun()
+
+        col_del1, col_del2 = st.sidebar.columns(2)
+        with col_del1:
+            if st.button("🗑️ Excluir Selecionado"):
+                st.session_state.carrinho_itens.pop(item_selecionado_idx)
+                st.rerun()
+        with col_del2:
+            if st.button("🗑️ Limpar Tudo"):
+                st.session_state.carrinho_itens = []
+                st.rerun()
+
+        st.sidebar.markdown(f"**Soma Total: R$ {soma_calculada_itens:.2f}**")
+        st.sidebar.markdown("---")
+    else:
+        soma_calculada_itens = 0.0
+
+    with st.sidebar.form("form_finalizacao"):
+        st.markdown("**Fechamento do Pagamento:**")
+        
+        valor_total_pedido = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(soma_calculada_itens))
+        valor_pago = st.number_input("Valor Pago / Desembolsado (R$)", min_value=0.0, format="%.2f", value=0.0)
+        forma_pgto = st.selectbox("Forma de Pagamento", ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "Fiado / Pendente"])
+        
+        submit_pedido = st.form_submit_button("💾 Salvar Registro no Caixa")
+        
+        if submit_pedido:
+            if st.session_state.carrinho_itens:
+                partes_detalhes = []
+                for it in st.session_state.carrinho_itens:
+                    ref_tag = " [REFORMA]" if it["Reforma"] == "Sim" else ""
+                    obs_str = f" - {it['Obs']}" if it['Obs'].strip() else ""
+                    val_item = float(it.get('ValorTotal', 0.0))
+                    partes_detalhes.append(f"{it['Qtd']}x {it['Tamanho']} ({it['Cor']}){ref_tag}{obs_str} [R$ {val_item:.2f}]")
+                detalhes_final = " ;; ".join(partes_detalhes)
+            else:
+                detalhes_final = "Lançamento direto sem itens especificados"
+
+            val_total_final = float(valor_total_pedido)
+            val_pago_final = float(valor_pago)
+            restante_final = val_total_final - val_pago_final
+            
+            if val_total_final <= 0.0:
+                status = "Em Orçamento / Em Estudo"
+            elif restante_final > 0.001:
+                status = "Pendente"
+            else:
+                status = "Quitado"
+            
+            if df.empty:
+                novo_id = 1
+            else:
+                novo_id = int(pd.to_numeric(df["ID"]).max()) + 1
+            
+            novo_registro = pd.DataFrame([{
+                "ID": novo_id,
+                "Data": data_registro.strftime("%d/%m/%Y"),
+                "Tipo": tipo,
+                "Categoria": categoria,
+                "Cliente": str(nome_cliente) if nome_cliente else "Não informado",
+                "Telefone": str(telefone_cliente) if telefone_cliente else "Não informado",
+                "Detalhes": detalhes_final,
+                "Valor Total": val_total_final,
+                "Valor Pago": val_pago_final,
+                "Restante": restante_final,
+                "Forma de Pagamento": forma_pgto,
+                "Status": status
+            }])
+            
+            df = pd.concat([df, novo_registro], ignore_index=True)
+            salvar_dados(df)
+            
+            st.session_state.carrinho_itens = []
+            st.success("Lançamento salvo com sucesso!")
+            st.rerun()
+
+# =========================================================================
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS
+# =========================================================================
+with aba_consulta:
+    st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
+    
+    if df.empty:
+        st.warning("Nenhum registro encontrado no sistema.")
+    else:
+        df_sorted = df.sort_values(by="ID", ascending=False)
+        opcoes_pedidos = []
+        for idx, row in df_sorted.iterrows():
+            opcoes_pedidos.append(f"ID #{row['ID']} - {row['Data']} - {row['Cliente']} (Total: R$ {row['Valor Total']})")
+            
+        pedido_selecionado_str = st.selectbox("Selecione o Lançamento / Pedido para Editar:", opcoes_pedidos)
+        
+        pedido_id = int(pedido_selecionado_str.split(" - ")[0].replace("ID #", ""))
+        idx_pedido = df[df["ID"] == pedido_id].index[0]
+        row_pedido = df.loc[idx_pedido]
+        
+        detalhes_brutos = str(row_pedido["Detalhes"])
+        
+        if st.session_state.current_edit_id != pedido_id:
+            st.session_state.current_edit_id = pedido_id
+            st.session_state.manual_valor_total = None
+            
+            parsed_items = []
+            if detalhes_brutos and detalhes_brutos != "Lançamento direto sem itens especificados":
+                itens_split = detalhes_brutos.split(" ;; ")
+                for item_str in itens_split:
+                    try:
+                        if "x " in item_str and " [R$ " in item_str:
+                            partes_item = item_str.split("x ", 1)
+                            qtd = int(partes_item[0].strip())
+                            resto = partes_item[1]
+                            desc, val_str = resto.rsplit(" [R$ ", 1)
+                            val_total = float(val_str.replace("]", "").strip())
+                            parsed_items.append({
+                                "desc": desc.strip(),
+                                "qtd": qtd,
+                                "val_total": val_total
+                            })
+                        else:
+                            parsed_items.append({"desc": item_str, "qtd": 1, "val_total": 0.0})
+                    except Exception:
+                        parsed_items.append({"desc": item_str, "qtd": 1, "val_total": 0.0})
+                        
+            st.session_state.edit_order_items = parsed_items
+        
+        st.markdown("---")
+        st.markdown("#### 📋 Itens Individuais do Pedido (Edição & Exclusão)")
+        
+        novos_itens_editados = []
+        valor_total_itens_edit = 0.0
+        
+        for i, item in enumerate(st.session_state.edit_order_items):
+            st.caption(f"**Item #{i+1}**")
+            
+            novo_desc = st.text_area(f"Descrição / Especificações #{i+1}", value=str(item["desc"]), key=f"edit_desc_{i}", height=75)
+            
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=int(item
