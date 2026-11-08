@@ -111,6 +111,11 @@ def carregar_dados():
             df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
             df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
             df_temp["Restante"] = pd.to_numeric(df_temp["Restante"], errors="coerce").fillna(0.0)
+            
+            df_temp["Status"] = df_temp.apply(
+                lambda r: "Em Orçamento / Em Estudo" if r["Valor Total"] <= 0 
+                else ("Pendente" if r["Restante"] > 0.001 else "Quitado"), axis=1
+            )
             return df_temp
         else:
             df_vazio = pd.DataFrame(columns=colunas_padrao)
@@ -138,11 +143,8 @@ if "carrinho_itens" not in st.session_state:
 if "edit_order_items" not in st.session_state:
     st.session_state.edit_order_items = []
 
-if "current_edit_id" not in st.session_state:
-    st.session_state.current_edit_id = None
-
-if "manual_valor_total" not in st.session_state:
-    st.session_state.manual_valor_total = None
+if "last_loaded_id" not in st.session_state:
+    st.session_state.last_loaded_id = None
 
 st.sidebar.markdown("### 🔒 Sessão")
 if st.sidebar.button("Bloquear / Sair"):
@@ -169,6 +171,16 @@ with aba_principal:
     if df.empty:
         st.info("Nenhum lançamento registrado ainda.")
     else:
+        total_geral = df["Valor Total"].sum()
+        total_pago = df["Valor Pago"].sum()
+        total_restante = df["Restante"].sum()
+        
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("💰 Valor Total Geral", f"R$ {total_geral:.2f}")
+        col_m2.metric("✅ Total Pago", f"R$ {total_pago:.2f}")
+        col_m3.metric("⏳ Total Restante (Pendente)", f"R$ {total_restante:.2f}")
+        
+        st.markdown("---")
         st.dataframe(df, use_container_width=True, hide_index=True)
     st.markdown("---")
 
@@ -429,11 +441,13 @@ with aba_principal:
             else:
                 detalhes_final = "Lançamento direto sem itens especificados"
 
-            restante = valor_total_pedido - valor_pago
+            val_total_final = float(valor_total_pedido)
+            val_pago_final = float(valor_pago)
+            restante_final = val_total_final - val_pago_final
             
-            if valor_total_pedido <= 0.0:
+            if val_total_final <= 0.0:
                 status = "Em Orçamento / Em Estudo"
-            elif restante > 0.001:
+            elif restante_final > 0.001:
                 status = "Pendente"
             else:
                 status = "Quitado"
@@ -451,9 +465,9 @@ with aba_principal:
                 "Cliente": str(nome_cliente) if nome_cliente else "Não informado",
                 "Telefone": str(telefone_cliente) if telefone_cliente else "Não informado",
                 "Detalhes": detalhes_final,
-                "Valor Total": float(valor_total_pedido),
-                "Valor Pago": float(valor_pago),
-                "Restante": float(restante),
+                "Valor Total": val_total_final,
+                "Valor Pago": val_pago_final,
+                "Restante": restante_final,
                 "Forma de Pagamento": forma_pgto,
                 "Status": status
             }])
@@ -466,7 +480,7 @@ with aba_principal:
             st.rerun()
 
 # =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS (COM DESCRIÇÃO AMPLIADA)
+# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS
 # =========================================================================
 with aba_consulta:
     st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
@@ -477,9 +491,9 @@ with aba_consulta:
         df_sorted = df.sort_values(by="ID", ascending=False)
         opcoes_pedidos = []
         for idx, row in df_sorted.iterrows():
-            opcoes_pedidos.append(f"ID #{row['ID']} - {row['Data']} - {row['Cliente']} (Total: R$ {row['Valor Total']})")
+            opcoes_pedidos.append(f"ID #{row['ID']} - {row['Data']} - {row['Cliente']} (Total: R$ {row['Valor Total']:.2f})")
             
-        pedido_selecionado_str = st.selectbox("Selecione o Lançamento / Pedido para Editar:", opcoes_pedidos)
+        pedido_selecionado_str = st.selectbox("Selecione o Lançamento / Pedido para Editar:", opcoes_pedidos, key="select_pedido_edicao")
         
         pedido_id = int(pedido_selecionado_str.split(" - ")[0].replace("ID #", ""))
         idx_pedido = df[df["ID"] == pedido_id].index[0]
@@ -487,10 +501,8 @@ with aba_consulta:
         
         detalhes_brutos = str(row_pedido["Detalhes"])
         
-        if st.session_state.current_edit_id != pedido_id:
-            st.session_state.current_edit_id = pedido_id
-            st.session_state.manual_valor_total = float(row_pedido["Valor Total"])
-            
+        if st.session_state.last_loaded_id != pedido_id:
+            st.session_state.last_loaded_id = pedido_id
             parsed_items = []
             if detalhes_brutos and detalhes_brutos != "Lançamento direto sem itens especificados":
                 itens_split = detalhes_brutos.split(" ;; ")
@@ -515,47 +527,17 @@ with aba_consulta:
             st.session_state.edit_order_items = parsed_items
         
         st.markdown("---")
-        st.markdown("#### 📋 Itens Individuais do Pedido (Edição & Exclusão)")
-        
-        novos_itens_editados = []
-        valor_total_itens_edit = 0.0
-        
-        for i, item in enumerate(st.session_state.edit_order_items):
-            st.caption(f"**Item #{i+1}**")
-            
-            novo_desc = st.text_area(f"Descrição / Especificações #{i+1}", value=str(item["desc"]), key=f"edit_desc_{i}", height=75)
-            
-            col_e1, col_e2 = st.columns(2)
-            with col_e1:
-                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=int(item["qtd"]), step=1, key=f"edit_qtd_{i}")
-            with col_e2:
-                val_unit_atual = item["val_total"] / item["qtd"] if item["qtd"] > 0 else 0.0
-                novo_val_unit = st.number_input(f"Val. Unit #{i+1} (R$)", min_value=0.0, format="%.2f", value=float(val_unit_atual), key=f"edit_val_unit_{i}")
-            
-            if st.button(f"🗑️ Excluir Item #{i+1}", key=f"del_item_{i}"):
-                st.session_state.edit_order_items.pop(i)
-                st.rerun()
-            
-            novo_val_total = nova_qtd * novo_val_unit
-            novos_itens_editados.append({
-                "desc": novo_desc,
-                "qtd": nova_qtd,
-                "val_total": novo_val_total
-            })
-            valor_total_itens_edit += novo_val_total
-            st.markdown("---")
-            
-        st.session_state.edit_order_items = novos_itens_editados
+        st.markdown("#### 📋 Itens Individuais do Pedido")
         
         with st.expander("➕ Adicionar NOVO item a este pedido"):
-            add_desc = st.text_area("Descrição / Especificações do novo item", key="add_desc_text")
+            add_desc = st.text_area("Descrição / Especificações do novo item", key="add_desc_text_edit")
             col_a1, col_a2 = st.columns(2)
             with col_a1:
-                add_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1, key="add_qtd")
+                add_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1, key="add_qtd_edit")
             with col_a2:
-                add_val_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0, key="add_val_unit")
+                add_val_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0, key="add_val_unit_edit")
             
-            if st.button("Adicionar Item ao Pedido"):
+            if st.button("Adicionar Item ao Pedido", key="btn_add_item_edit"):
                 if add_desc.strip():
                     st.session_state.edit_order_items.append({
                         "desc": add_desc,
@@ -569,7 +551,42 @@ with aba_consulta:
 
         st.markdown("---")
         
-        with st.form("form_salvar_edicao_pedido"):
+        novos_itens_editados = []
+        valor_total_itens_edit = 0.0
+        itens_para_remover = None
+        
+        for i, item in enumerate(st.session_state.edit_order_items):
+            st.caption(f"**Item #{i+1}**")
+            
+            col_i1, col_i2, col_i3, col_i4 = st.columns([4, 1, 2, 1])
+            with col_i1:
+                novo_desc = st.text_input(f"Descrição #{i+1}", value=str(item["desc"]), key=f"edit_desc_{pedido_id}_{i}")
+            with col_i2:
+                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=int(item["qtd"]), step=1, key=f"edit_qtd_{pedido_id}_{i}")
+            with col_i3:
+                val_unit_atual = item["val_total"] / item["qtd"] if item["qtd"] > 0 else 0.0
+                novo_val_unit = st.number_input(f"Val. Unit #{i+1}", min_value=0.0, format="%.2f", value=float(val_unit_atual), key=f"edit_val_unit_{pedido_id}_{i}")
+            with col_i4:
+                st.write("")
+                if st.button("🗑️", key=f"del_item_{pedido_id}_{i}", help="Excluir este item"):
+                    itens_para_remover = i
+            
+            novo_val_total = nova_qtd * novo_val_unit
+            novos_itens_editados.append({
+                "desc": novo_desc,
+                "qtd": nova_qtd,
+                "val_total": novo_val_total
+            })
+            valor_total_itens_edit += novo_val_total
+            st.markdown("---")
+            
+        if itens_para_remover is not None:
+            st.session_state.edit_order_items.pop(itens_para_remover)
+            st.rerun()
+            
+        st.session_state.edit_order_items = novos_itens_editados
+        
+        with st.form(f"form_salvar_edicao_pedido_{pedido_id}"):
             st.markdown("#### 👤 Dados do Pedido / Pagamento")
             
             col_d1, col_d2 = st.columns(2)
@@ -578,7 +595,7 @@ with aba_consulta:
             with col_d2:
                 edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
             
-            valor_padrao_total = st.session_state.manual_valor_total if st.session_state.manual_valor_total is not None else float(row_pedido["Valor Total"])
+            valor_padrao_total = valor_total_itens_edit if st.session_state.edit_order_items else float(row_pedido["Valor Total"])
             
             col_d3, col_d4 = st.columns(2)
             with col_d3:
@@ -610,8 +627,6 @@ with aba_consulta:
                 else:
                     novo_status = "Quitado"
                 
-                st.session_state.manual_valor_total = float(edit_valor_total)
-                
                 df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
                 df.loc[idx_pedido, "Telefone"] = str(edit_telefone)
                 df.loc[idx_pedido, "Detalhes"] = str(nova_string_detalhes)
@@ -628,15 +643,15 @@ with aba_consulta:
                 df.loc[idx_pedido, "Status"] = str(novo_status)
                 
                 salvar_dados(df)
+                st.session_state.last_loaded_id = None
                 st.success("Pedido atualizado com sucesso!")
                 st.rerun()
 
         st.markdown("---")
-        if st.button("🚨 Excluir Pedido Inteiro", type="primary"):
+        if st.button("🚨 Excluir Pedido Inteiro", key=f"btn_del_pedido_{pedido_id}", type="primary"):
             df = df.drop(idx_pedido)
             salvar_dados(df)
-            st.session_state.current_edit_id = None
-            st.session_state.manual_valor_total = None
+            st.session_state.last_loaded_id = None
             st.success("Pedido excluído do sistema!")
             st.rerun()
 
@@ -661,7 +676,7 @@ with aba_clientes:
                 Ultima_Compra=("Data", "max")
             ).reset_index()
             
-            busca_cliente = st.text_input("🔍 Pesquisar Cliente por Nome:")
+            busca_cliente = st.text_input("🔍 Pesquisar Cliente por Nome:", key="busca_cliente_input")
             if busca_cliente:
                 df_agrupado = df_agrupado[df_agrupado["Cliente"].str.contains(busca_cliente, case=False, na=False)]
             
@@ -691,7 +706,7 @@ with aba_fornecedores:
                 Ultima_Compra=("Data", "max")
             ).reset_index()
             
-            busca_forn = st.text_input("🔍 Pesquisar Fornecedor por Nome:")
+            busca_forn = st.text_input("🔍 Pesquisar Fornecedor por Nome:", key="busca_forn_input")
             if busca_forn:
                 df_agrupado_forn = df_agrupado_forn[df_agrupado_forn["Cliente"].str.contains(busca_forn, case=False, na=False)]
             
