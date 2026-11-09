@@ -94,6 +94,18 @@ def get_google_sheet():
     sh = gc.open(NOME_PLANILHA)
     return sh.sheet1
 
+def limpar_moeda(val):
+    """Converte valores com R$, pontos e vírgulas da planilha em float puro para cálculos."""
+    if pd.isna(val) or val == "":
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    val_str = str(val).replace("R$", "").replace(".", "").replace(",", ".").strip()
+    try:
+        return float(val_str)
+    except:
+        return 0.0
+
 def carregar_dados():
     colunas_padrao = [
         "ID", "Data", "Tipo", "Categoria", "Cliente", "Telefone", "Detalhes", 
@@ -108,10 +120,10 @@ def carregar_dados():
             df_temp = df_temp.dropna(subset=["ID"])
             df_temp["ID"] = df_temp["ID"].astype(int)
             
-            df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
-            df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
+            df_temp["Valor Total"] = df_temp["Valor Total"].apply(limpar_moeda)
+            df_temp["Valor Pago"] = df_temp["Valor Pago"].apply(limpar_moeda)
             
-            # Recalcula o Restante matematicamente para evitar divergências salvas na planilha
+            # Recalcula o Restante matematicamente
             df_temp["Restante"] = df_temp["Valor Total"] - df_temp["Valor Pago"]
             
             df_temp["Status"] = df_temp.apply(
@@ -131,7 +143,16 @@ def salvar_dados(df):
     try:
         worksheet = get_google_sheet()
         worksheet.clear()
-        df_para_salvar = df.fillna("")
+        df_para_salvar = df.copy()
+        
+        # Formata as colunas financeiras com R$ antes de enviar para a planilha
+        for col in ["Valor Total", "Valor Pago", "Restante"]:
+            if col in df_para_salvar.columns:
+                df_para_salvar[col] = df_para_salvar[col].apply(
+                    lambda x: f"R$ {float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) and str(x).strip() != "" else "R$ 0,00"
+                )
+                
+        df_para_salvar = df_para_salvar.fillna("")
         dados_lista = [df_para_salvar.columns.values.tolist()] + df_para_salvar.values.tolist()
         worksheet.update(values=dados_lista, range_name="A1")
     except Exception as e:
@@ -391,328 +412,4 @@ with aba_principal:
             edit_reforma = st.selectbox("É Reforma?", lista_ref, index=idx_ref)
             
             edit_obs = st.text_input("Observação", value=item_atual["Obs"])
-            edit_val_unit_cart = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=float(item_atual["ValorTotal"] / item_atual["Qtd"]) if item_atual["Qtd"] > 0 else 0.0)
-            
-            btn_salvar_edit = st.form_submit_button("💾 Confirmar Alteração")
-            
-            if btn_salvar_edit:
-                novo_total_item = edit_val_unit_cart * edit_qtd
-                st.session_state.carrinho_itens[item_selecionado_idx] = {
-                    "Tamanho": edit_tam,
-                    "Cor": edit_cor,
-                    "Qtd": edit_qtd,
-                    "Reforma": edit_reforma,
-                    "Obs": edit_obs,
-                    "ValorTotal": novo_total_item
-                }
-                st.success("Item atualizado!")
-                st.rerun()
-
-        col_del1, col_del2 = st.sidebar.columns(2)
-        with col_del1:
-            if st.button("🗑️ Excluir Selecionado"):
-                st.session_state.carrinho_itens.pop(item_selecionado_idx)
-                st.rerun()
-        with col_del2:
-            if st.button("🗑️ Limpar Tudo"):
-                st.session_state.carrinho_itens = []
-                st.rerun()
-
-        st.sidebar.markdown(f"**Soma Total: R$ {soma_calculada_itens:.2f}**")
-        st.sidebar.markdown("---")
-    else:
-        soma_calculada_itens = 0.0
-
-    with st.sidebar.form("form_finalizacao"):
-        st.markdown("**Fechamento do Pagamento:**")
-        
-        valor_total_pedido = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(soma_calculada_itens))
-        valor_pago = st.number_input("Valor Pago / Desembolsado (R$)", min_value=0.0, format="%.2f", value=0.0)
-        forma_pgto = st.selectbox("Forma de Pagamento", ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "Fiado / Pendente"])
-        
-        submit_pedido = st.form_submit_button("💾 Salvar Registro no Caixa")
-        
-        if submit_pedido:
-            if st.session_state.carrinho_itens:
-                partes_detalhes = []
-                for it in st.session_state.carrinho_itens:
-                    ref_tag = " [REFORMA]" if it["Reforma"] == "Sim" else ""
-                    obs_str = f" - {it['Obs']}" if it['Obs'].strip() else ""
-                    partes_detalhes.append(f"{it['Qtd']}x {it['Tamanho']} ({it['Cor']}){ref_tag}{obs_str} [R$ {it['ValorTotal']:.2f}]")
-                detalhes_final = " ;; ".join(partes_detalhes)
-            else:
-                detalhes_final = "Lançamento direto sem itens especificados"
-
-            val_total_final = float(valor_total_pedido)
-            val_pago_final = float(valor_pago)
-            restante_final = val_total_final - val_pago_final
-            
-            if val_total_final <= 0.0:
-                status = "Em Orçamento / Em Estudo"
-            elif restante_final > 0.001:
-                status = "Pendente"
-            else:
-                status = "Quitado"
-            
-            if df.empty:
-                novo_id = 1
-            else:
-                novo_id = int(pd.to_numeric(df["ID"]).max()) + 1
-            
-            novo_registro = pd.DataFrame([{
-                "ID": novo_id,
-                "Data": data_registro.strftime("%d/%m/%Y"),
-                "Tipo": tipo,
-                "Categoria": categoria,
-                "Cliente": str(nome_cliente) if nome_cliente else "Não informado",
-                "Telefone": str(telefone_cliente) if telefone_cliente else "Não informado",
-                "Detalhes": detalhes_final,
-                "Valor Total": val_total_final,
-                "Valor Pago": val_pago_final,
-                "Restante": restante_final,
-                "Forma de Pagamento": forma_pgto,
-                "Status": status
-            }])
-            
-            df = pd.concat([df, novo_registro], ignore_index=True)
-            salvar_dados(df)
-            
-            st.session_state.carrinho_itens = []
-            st.success("Lançamento salvo com sucesso!")
-            st.rerun()
-
-# =========================================================================
-# ABA 2: CONSULTA & EDIÇÃO DE PEDIDOS
-# =========================================================================
-with aba_consulta:
-    st.markdown("### ✏️ Edição de Pedidos & Itens Individuais")
-    
-    if df.empty:
-        st.warning("Nenhum registro encontrado no sistema.")
-    else:
-        df_sorted = df.sort_values(by="ID", ascending=False)
-        opcoes_pedidos = []
-        for idx, row in df_sorted.iterrows():
-            opcoes_pedidos.append(f"ID #{row['ID']} - {row['Data']} - {row['Cliente']} (Total: R$ {row['Valor Total']:.2f})")
-            
-        pedido_selecionado_str = st.selectbox("Selecione o Lançamento / Pedido para Editar:", opcoes_pedidos, key="select_pedido_edicao")
-        
-        pedido_id = int(pedido_selecionado_str.split(" - ")[0].replace("ID #", ""))
-        idx_pedido = df[df["ID"] == pedido_id].index[0]
-        row_pedido = df.loc[idx_pedido]
-        
-        detalhes_brutos = str(row_pedido["Detalhes"])
-        
-        if st.session_state.last_loaded_id != pedido_id:
-            st.session_state.last_loaded_id = pedido_id
-            parsed_items = []
-            if detalhes_brutos and detalhes_brutos != "Lançamento direto sem itens especificados":
-                itens_split = detalhes_brutos.split(" ;; ")
-                for item_str in itens_split:
-                    try:
-                        if "x " in item_str and " [R$ " in item_str:
-                            partes_item = item_str.split("x ", 1)
-                            qtd = int(partes_item[0].strip())
-                            resto = partes_item[1]
-                            desc, val_str = resto.rsplit(" [R$ ", 1)
-                            val_total = float(val_str.replace("]", "").strip())
-                            parsed_items.append({
-                                "desc": desc.strip(),
-                                "qtd": qtd,
-                                "val_total": val_total
-                            })
-                        else:
-                            parsed_items.append({"desc": item_str, "qtd": 1, "val_total": 0.0})
-                    except Exception:
-                        parsed_items.append({"desc": item_str, "qtd": 1, "val_total": 0.0})
-                        
-            st.session_state.edit_order_items = parsed_items
-        
-        st.markdown("---")
-        st.markdown("#### 📋 Itens Individuais do Pedido")
-        
-        with st.expander("➕ Adicionar NOVO item a este pedido"):
-            add_desc = st.text_area("Descrição / Especificações do novo item", key="add_desc_text_edit")
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                add_qtd = st.number_input("Quantidade", min_value=1, value=1, step=1, key="add_qtd_edit")
-            with col_a2:
-                add_val_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0, key="add_val_unit_edit")
-            
-            if st.button("Adicionar Item ao Pedido", key="btn_add_item_edit"):
-                if add_desc.strip():
-                    st.session_state.edit_order_items.append({
-                        "desc": add_desc,
-                        "qtd": add_qtd,
-                        "val_total": add_qtd * add_val_unit
-                    })
-                    st.success("Item adicionado ao pedido!")
-                    st.rerun()
-                else:
-                    st.warning("Preencha a descrição do item.")
-
-        st.markdown("---")
-        
-        novos_itens_editados = []
-        valor_total_itens_edit = 0.0
-        itens_para_remover = None
-        
-        for i, item in enumerate(st.session_state.edit_order_items):
-            st.caption(f"**Item #{i+1}**")
-            
-            col_i1, col_i2, col_i3, col_i4 = st.columns([4, 1, 2, 1])
-            with col_i1:
-                novo_desc = st.text_input(f"Descrição #{i+1}", value=str(item["desc"]), key=f"edit_desc_{pedido_id}_{i}")
-            with col_i2:
-                nova_qtd = st.number_input(f"Qtd #{i+1}", min_value=1, value=int(item["qtd"]), step=1, key=f"edit_qtd_{pedido_id}_{i}")
-            with col_i3:
-                val_unit_atual = item["val_total"] / item["qtd"] if item["qtd"] > 0 else 0.0
-                novo_val_unit = st.number_input(f"Val. Unit #{i+1}", min_value=0.0, format="%.2f", value=float(val_unit_atual), key=f"edit_val_unit_{pedido_id}_{i}")
-            with col_i4:
-                st.write("")
-                if st.button("🗑️", key=f"del_item_{pedido_id}_{i}", help="Excluir este item"):
-                    itens_para_remover = i
-            
-            novo_val_total = nova_qtd * novo_val_unit
-            novos_itens_editados.append({
-                "desc": novo_desc,
-                "qtd": nova_qtd,
-                "val_total": novo_val_total
-            })
-            valor_total_itens_edit += novo_val_total
-            st.markdown("---")
-            
-        if itens_para_remover is not None:
-            st.session_state.edit_order_items.pop(itens_para_remover)
-            st.rerun()
-            
-        st.session_state.edit_order_items = novos_itens_editados
-        
-        with st.form(f"form_salvar_edicao_pedido_{pedido_id}"):
-            st.markdown("#### 👤 Dados do Pedido / Pagamento")
-            
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                edit_cliente = st.text_input("Cliente / Fornecedor", value=str(row_pedido["Cliente"]))
-            with col_d2:
-                edit_telefone = st.text_input("Telefone", value=str(row_pedido["Telefone"]))
-            
-            valor_padrao_total = valor_total_itens_edit if st.session_state.edit_order_items else float(row_pedido["Valor Total"])
-            
-            col_d3, col_d4 = st.columns(2)
-            with col_d3:
-                edit_valor_total = st.number_input("Valor Total Final (R$)", min_value=0.0, format="%.2f", value=float(valor_padrao_total))
-            with col_d4:
-                edit_valor_pago = st.number_input("Valor Pago (R$)", min_value=0.0, format="%.2f", value=float(row_pedido["Valor Pago"]))
-            
-            formas_pgto = ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "Fiado / Pendente"]
-            idx_pgto = formas_pgto.index(row_pedido["Forma de Pagamento"]) if row_pedido["Forma de Pagamento"] in formas_pgto else 0
-            edit_forma_pgto = st.selectbox("Forma de Pagamento", formas_pgto, index=idx_pgto)
-            
-            btn_salvar_alteracoes = st.form_submit_button("💾 Salvar Alterações na Planilha")
-            
-            if btn_salvar_alteracoes:
-                if st.session_state.edit_order_items:
-                    partes = []
-                    for it in st.session_state.edit_order_items:
-                        desc_limpa = it['desc'].replace("\n", " ")
-                        partes.append(f"{it['qtd']}x {desc_limpa} [R$ {it['val_total']:.2f}]")
-                    nova_string_detalhes = " ;; ".join(partes)
-                else:
-                    nova_string_detalhes = "Lançamento sem itens especificados"
-                
-                novo_restante = float(edit_valor_total) - float(edit_valor_pago)
-                if float(edit_valor_total) <= 0.0:
-                    novo_status = "Em Orçamento / Em Estudo"
-                elif novo_restante > 0.001:
-                    novo_status = "Pendente"
-                else:
-                    novo_status = "Quitado"
-                
-                df.loc[idx_pedido, "Cliente"] = str(edit_cliente)
-                df.loc[idx_pedido, "Telefone"] = str(edit_telefone)
-                df.loc[idx_pedido, "Detalhes"] = str(nova_string_detalhes)
-                
-                df["Valor Total"] = df["Valor Total"].astype(float)
-                df["Valor Pago"] = df["Valor Pago"].astype(float)
-                df["Restante"] = df["Restante"].astype(float)
-                
-                df.loc[idx_pedido, "Valor Total"] = float(edit_valor_total)
-                df.loc[idx_pedido, "Valor Pago"] = float(edit_valor_pago)
-                df.loc[idx_pedido, "Restante"] = float(novo_restante)
-                
-                df.loc[idx_pedido, "Forma de Pagamento"] = str(edit_forma_pgto)
-                df.loc[idx_pedido, "Status"] = str(novo_status)
-                
-                salvar_dados(df)
-                st.session_state.last_loaded_id = None
-                st.success("Pedido atualizado com sucesso!")
-                st.rerun()
-
-        st.markdown("---")
-        if st.button("🚨 Excluir Pedido Inteiro", key=f"btn_del_pedido_{pedido_id}", type="primary"):
-            df = df.drop(idx_pedido)
-            salvar_dados(df)
-            st.session_state.last_loaded_id = None
-            st.success("Pedido excluído do sistema!")
-            st.rerun()
-
-# =========================================================================
-# ABA 3: CLIENTES
-# =========================================================================
-with aba_clientes:
-    st.markdown("### 👥 Cadastro & Histórico de Clientes")
-    st.markdown("Lista consolidada de clientes extraída automaticamente dos registros de entrada.")
-    
-    if df.empty:
-        st.info("Nenhum dado cadastrado.")
-    else:
-        df_clientes = df[df["Tipo"].str.contains("Entrada", case=False, na=False)].copy()
-        
-        if df_clientes.empty:
-            st.info("Nenhum cliente cadastrado em vendas ainda.")
-        else:
-            df_agrupado = df_clientes.groupby(["Cliente", "Telefone"]).agg(
-                Total_Gasto=("Valor Total", "sum"),
-                Qtd_Pedidos=("ID", "count"),
-                Ultima_Compra=("Data", "max")
-            ).reset_index()
-            
-            busca_cliente = st.text_input("🔍 Pesquisar Cliente por Nome:", key="busca_cliente_input")
-            if busca_cliente:
-                df_agrupado = df_agrupado[df_agrupado["Cliente"].str.contains(busca_cliente, case=False, na=False)]
-            
-            df_agrupado.columns = ["Nome do Cliente", "Telefone / WhatsApp", "Total Gasto (R$)", "Qtd de Pedidos", "Última Compra"]
-            df_agrupado = df_agrupado.sort_values(by="Total Gasto (R$)", ascending=False)
-            
-            st.dataframe(df_agrupado, use_container_width=True, hide_index=True)
-
-# =========================================================================
-# ABA 4: FORNECEDORES
-# =========================================================================
-with aba_fornecedores:
-    st.markdown("### 🚚 Cadastro & Histórico de Fornecedores")
-    st.markdown("Lista consolidada de fornecedores e insumos extraída automaticamente dos registros de saída.")
-    
-    if df.empty:
-        st.info("Nenhum dado cadastrado.")
-    else:
-        df_forn = df[df["Tipo"].str.contains("Saída", case=False, na=False)].copy()
-        
-        if df_forn.empty:
-            st.info("Nenhum fornecedor cadastrado em despesas/saídas ainda.")
-        else:
-            df_agrupado_forn = df_forn.groupby(["Cliente", "Telefone"]).agg(
-                Total_Gasto=("Valor Total", "sum"),
-                Qtd_Compras=("ID", "count"),
-                Ultima_Compra=("Data", "max")
-            ).reset_index()
-            
-            busca_forn = st.text_input("🔍 Pesquisar Fornecedor por Nome:", key="busca_forn_input")
-            if busca_forn:
-                df_agrupado_forn = df_agrupado_forn[df_agrupado_forn["Cliente"].str.contains(busca_forn, case=False, na=False)]
-            
-            df_agrupado_forn.columns = ["Nome do Fornecedor", "Telefone / WhatsApp", "Total Gasto (R$)", "Qtd de Compras", "Última Compra"]
-            df_agrupado_forn = df_agrupado_forn.sort_values(by="Total Gasto (R$)", ascending=False)
-            
-            st.dataframe(df_agrupado_forn, use_container_width=True, hide_index=True)
+            edit_val_unit_cart = st.number_input("Valor Unitário
