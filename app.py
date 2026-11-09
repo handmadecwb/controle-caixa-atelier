@@ -95,7 +95,6 @@ def get_google_sheet():
     return sh.sheet1
 
 def limpar_moeda(val):
-    """Converte valores com R$, pontos e vírgulas da planilha em float puro para cálculos."""
     if pd.isna(val) or val == "":
         return 0.0
     if isinstance(val, (int, float)):
@@ -107,7 +106,6 @@ def limpar_moeda(val):
         return 0.0
 
 def formatar_moeda(val):
-    """Formata um número float no padrão monetário brasileiro R$ 0,00."""
     try:
         num = float(val)
     except:
@@ -362,23 +360,87 @@ with aba_principal:
         with st.sidebar.form("form_adicionar_item", clear_on_submit=True):
             col_t1, col_t2 = st.columns(2)
             with col_t1:
-                item_tam = st.selectbox("Tamanho", [
-                    "Único", "RN", "P (Bebê)", "M (Bebê)", "G (Bebê)", 
-                    "Tam 1", "Tam 2", "Tam 4", "Tam 6", "Tam 8", "Tam 10", "Tam 12", "Tam 14", "Tam 16", 
-                    "PP", "P", "M", "G", "GG", "XG", "G1", "G2", "G3", "G4"
-                ])
+                item_tam = st.selectbox("Tamanho", ["Único", "RN", "P (Bebê)", "M (Bebê)", "G (Bebê)", "Tam 1", "Tam 2", "Tam 4", "Tam 6", "Tam 8", "Tam 10", "Tam 12", "Tam 14", "Tam 16", "PP", "P", "M", "G", "GG", "XG", "G1", "G2", "G3", "G4"])
             with col_t2:
-                item_cor_sel = st.selectbox("Cor", [
-                    "Preto", "Branco", "Cinza", "Grafite", "Chumbo", "Off-White", "Creme",
-                    "Azul Marinho", "Azul Royal", "Azul Claro", "Azul Petróleo", "Turquesa", "Jeans",
-                    "Vermelho", "Bordô", "Vinho", "Rosa", "Rosa Chá", "Pink", "Magenta", "Lilás", "Roxo", "Lavanda",
-                    "Verde", "Verde Militar", "Verde Musgo", "Verde Água", "Verde Lima", "Mint",
-                    "Amarelo", "Mostarda", "Laranja", "Salmão", "Coral", "Terracota",
-                    "Marrom", "Bege", "Nude", "Cáqui", "Dourado", "Prata", "Bronze", "Outra"
-                ])
+                item_cor_sel = st.selectbox("Cor", ["Preto", "Branco", "Cinza", "Grafite", "Chumbo", "Off-White", "Creme", "Azul Marinho", "Azul Royal", "Azul Claro", "Azul Petróleo", "Turquesa", "Jeans", "Vermelho", "Bordô", "Vinho", "Rosa", "Rosa Chá", "Pink", "Magenta", "Lilás", "Roxo", "Lavanda", "Verde", "Verde Militar", "Verde Musgo", "Verde Água", "Verde Lima", "Mint", "Amarelo", "Mostarda", "Laranja", "Salmão", "Coral", "Terracota", "Marrom", "Bege", "Nude", "Cáqui", "Dourado", "Prata", "Bronze", "Outra"])
 
             item_cor_custom = st.text_input("Qual a cor? (Se 'Outra' acima)")
 
             col_t3, col_t4 = st.columns(2)
             with col_t3:
-                item_qtd =
+                item_qtd = st.number_input("Qtd", min_value=1, value=1, step=1)
+            with col_t4:
+                item_reforma = st.selectbox("É Reforma?", ["Não", "Sim"])
+
+            item_obs = st.text_input("Detalhe/Observação do item (ex: barra, ajuste)")
+            item_valor_unit = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
+
+            btn_adicionar = st.form_submit_button("➕ Adicionar este item na lista")
+            
+            if btn_adicionar:
+                cor_final = item_cor_custom.strip() if item_cor_sel == "Outra" and item_cor_custom.strip() else item_cor_sel
+                valor_total_item = item_valor_unit * item_qtd
+                st.session_state.carrinho_itens.append({
+                    "Tamanho": item_tam,
+                    "Cor": cor_final,
+                    "Qtd": item_qtd,
+                    "Reforma": item_reforma,
+                    "Obs": item_obs if item_obs else "",
+                    "ValorTotal": valor_total_item
+                })
+                st.rerun()
+
+    if st.session_state.carrinho_itens:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"### 🛒 Carrinho ({len(st.session_state.carrinho_itens)} itens)")
+        
+        soma_calculada_itens = 0.0
+        opcoes_itens = []
+        
+        for idx, it in enumerate(st.session_state.carrinho_itens):
+            soma_calculada_itens += it["ValorTotal"]
+            ref_texto = " [REFORMA]" if it["Reforma"] == "Sim" else ""
+            label = f"[{idx+1}] {it['Qtd']}x {it['Tamanho']} ({it['Cor']}){ref_texto} - R$ {it['ValorTotal']:.2f}"
+            opcoes_itens.append(label)
+            st.sidebar.caption(label)
+            
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**✏️ Editar / Remover Item:**")
+        
+        item_selecionado_idx = st.sidebar.selectbox("Selecione o item para alterar:", options=range(len(opcoes_itens)), format_func=lambda x: f"Item #{x+1}")
+        
+        item_atual = st.session_state.carrinho_itens[item_selecionado_idx]
+        
+        with st.sidebar.form(f"form_editar_item_{item_selecionado_idx}"):
+            edit_tam = st.text_input("Descrição / Tamanho / Medida", value=item_atual["Tamanho"])
+            edit_cor = st.text_input("Categoria / Cor / Tipo", value=item_atual["Cor"])
+            edit_qtd = st.number_input("Qtd", min_value=1, value=int(item_atual["Qtd"]), step=1)
+            
+            lista_ref = ["Não", "Sim"]
+            idx_ref = lista_ref.index(item_atual["Reforma"]) if item_atual["Reforma"] in lista_ref else 0
+            edit_reforma = st.selectbox("É Reforma?", lista_ref, index=idx_ref)
+            
+            edit_obs = st.text_input("Observação", value=item_atual["Obs"])
+            edit_val_unit_cart = st.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=float(item_atual["ValorTotal"] / item_atual["Qtd"]) if item_atual["Qtd"] > 0 else 0.0)
+            
+            btn_salvar_edit = st.form_submit_button("💾 Confirmar Alteração")
+            
+            if btn_salvar_edit:
+                novo_total_item = edit_val_unit_cart * edit_qtd
+                st.session_state.carrinho_itens[item_selecionado_idx] = {
+                    "Tamanho": edit_tam,
+                    "Cor": edit_cor,
+                    "Qtd": edit_qtd,
+                    "Reforma": edit_reforma,
+                    "Obs": edit_obs,
+                    "ValorTotal": novo_total_item
+                }
+                st.success("Item atualizado!")
+                st.rerun()
+
+        col_del1, col_del2 = st.sidebar.columns(2)
+        with col_del1:
+            if st.button("🗑️ Excluir Selecionado"):
+                st.session_state.carrinho_itens.pop(item_selecionado_idx)
+                st.rerun()
+        with col
