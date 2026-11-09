@@ -122,7 +122,6 @@ def carregar_dados():
     try:
         worksheet = get_google_sheet()
         
-        # Garante que o cabeçalho esteja correto na linha 1
         primeira_linha = worksheet.row_values(1)
         if not primeira_linha or primeira_linha[0] != "ID":
             worksheet.update(values=[colunas_padrao], range_name="A1")
@@ -163,7 +162,6 @@ def salvar_dados(df):
         worksheet.clear()
         df_para_salvar = df.copy()
         
-        # Aplica o formato R$ em todas as colunas financeiras antes de salvar
         for col in ["Valor Total", "Valor Pago", "Restante"]:
             if col in df_para_salvar.columns:
                 df_para_salvar[col] = df_para_salvar[col].apply(formatar_moeda)
@@ -341,4 +339,46 @@ with aba_principal:
         with col_ins2:
             ins_unidade = st.selectbox("Unidade de Medida", ["Metros", "Unidades", "Bobinas", "Cones", "Pacotes", "Litros"])
 
-        ins_valor_unit = st.
+        ins_valor_unit = st.sidebar.number_input("Valor Unitário (R$)", min_value=0.0, format="%.2f", value=0.0)
+        ins_obs = st.sidebar.text_input("Observação / Marca / Especificação")
+
+        if st.sidebar.button("➕ Adicionar Insumo à Compra"):
+            valor_total_insumo = ins_valor_unit * ins_qtd
+            obs_texto = f" - Obs: {ins_obs}" if ins_obs else ""
+            descricao_completa = f"Insumo [{tipo_insumo}]: {nome_item_insumo} ({ins_qtd} {ins_unidade}){obs_texto}"
+            st.session_state.carrinho_itens.append({
+                "Tamanho": f"{ins_qtd} {ins_unidade}",
+                "Cor": tipo_insumo,
+                "Qtd": ins_qtd,
+                "Reforma": "Não",
+                "Obs": descricao_completa,
+                "ValorTotal": valor_total_insumo
+            })
+            st.success("Insumo adicionado à lista!")
+            st.rerun()
+
+    else:
+        st.sidebar.markdown("**Adicionar Itens ao Pedido:**")
+        with st.sidebar.form("form_adicionar_item", clear_on_submit=True):
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                item_tam = st.selectbox("Tamanho", [
+                    "Único", "RN", "P (Bebê)", "M (Bebê)", "G (Bebê)", 
+                    "Tam 1", "Tam 2", "Tam 4", "Tam 6", "Tam 8", "Tam 10", "Tam 12", "Tam 14", "Tam 16", 
+                    "PP", "P", "M", "G", "GG", "XG", "G1", "G2", "G3", "G4"
+                ])
+            with col_t2:
+                item_cor_sel = st.selectbox("Cor", [
+                    "Preto", "Branco", "Cinza", "Grafite", "Chumbo", "Off-White", "Creme",
+                    "Azul Marinho", "Azul Royal", "Azul Claro", "Azul Petróleo", "Turquesa", "Jeans",
+                    "Vermelho", "Bordô", "Vinho", "Rosa", "Rosa Chá", "Pink", "Magenta", "Lilás", "Roxo", "Lavanda",
+                    "Verde", "Verde Militar", "Verde Musgo", "Verde Água", "Verde Lima", "Mint",
+                    "Amarelo", "Mostarda", "Laranja", "Salmão", "Coral", "Terracota",
+                    "Marrom", "Bege", "Nude", "Cáqui", "Dourado", "Prata", "Bronze", "Outra"
+                ])
+
+            item_cor_custom = st.text_input("Qual a cor? (Se 'Outra' acima)")
+
+            col_t3, col_t4 = st.columns(2)
+            with col_t3:
+                item_qtd =
