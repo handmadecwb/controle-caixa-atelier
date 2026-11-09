@@ -110,7 +110,9 @@ def carregar_dados():
             
             df_temp["Valor Total"] = pd.to_numeric(df_temp["Valor Total"], errors="coerce").fillna(0.0)
             df_temp["Valor Pago"] = pd.to_numeric(df_temp["Valor Pago"], errors="coerce").fillna(0.0)
-            df_temp["Restante"] = pd.to_numeric(df_temp["Restante"], errors="coerce").fillna(0.0)
+            
+            # Recalcula o Restante matematicamente para evitar divergências salvas na planilha
+            df_temp["Restante"] = df_temp["Valor Total"] - df_temp["Valor Pago"]
             
             df_temp["Status"] = df_temp.apply(
                 lambda r: "Em Orçamento / Em Estudo" if r["Valor Total"] <= 0 
